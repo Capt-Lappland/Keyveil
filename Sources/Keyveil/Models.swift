@@ -1,6 +1,7 @@
 import AppKit
 import ApplicationServices
 import Combine
+import CoreGraphics
 
 struct ShortcutItem: Identifiable, Hashable, Sendable {
     let id: String
@@ -51,6 +52,7 @@ final class AppState: ObservableObject {
     @Published var searchText = ""
     @Published var isLoading = false
     @Published var isPermissionPromptVisible = false
+    @Published private(set) var permissionRevision = 0
     @Published var isPinned = false
     @Published var searchFocusRequest = 0
     @Published var holdDelay: TimeInterval {
@@ -81,6 +83,14 @@ final class AppState: ObservableObject {
 
     var isAccessibilityGranted: Bool {
         AXIsProcessTrusted()
+    }
+
+    var isInputMonitoringGranted: Bool {
+        CGPreflightListenEventAccess()
+    }
+
+    var hasRequiredPermissions: Bool {
+        isAccessibilityGranted && isInputMonitoringGranted
     }
 
     var filteredGroups: [ShortcutGroup] {
@@ -200,8 +210,31 @@ final class AppState: ObservableObject {
         AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": true] as CFDictionary)
     }
 
+    func requestAccessibilityFromOnboarding() {
+        closeOverlay()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) { [weak self] in
+            self?.requestAccessibilityAccess()
+        }
+    }
+
+    func requestInputMonitoringFromOnboarding() {
+        closeOverlay()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
+            CGRequestListenEventAccess()
+        }
+    }
+
+    func refreshPermissionStatus() {
+        permissionRevision &+= 1
+    }
+
     func openAccessibilitySettings() {
         guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") else { return }
+        NSWorkspace.shared.open(url)
+    }
+
+    func openInputMonitoringSettings() {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent") else { return }
         NSWorkspace.shared.open(url)
     }
 }

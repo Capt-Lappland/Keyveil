@@ -28,10 +28,22 @@ struct SettingsView: View {
                         appState.openAccessibilitySettings()
                     }
                 }
+
+                HStack {
+                    Label(
+                        appState.isInputMonitoringGranted ? "Input Monitoring access granted" : "Input Monitoring access required",
+                        systemImage: appState.isInputMonitoringGranted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
+                    )
+                    .foregroundStyle(appState.isInputMonitoringGranted ? .green : .orange)
+                    Spacer()
+                    Button("Open Settings") {
+                        appState.openInputMonitoringSettings()
+                    }
+                }
             }
         }
         .formStyle(.grouped)
         .padding(8)
-        .frame(width: 480, height: 210)
+        .frame(width: 500, height: 260)
     }
 }

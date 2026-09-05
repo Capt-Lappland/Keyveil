@@ -312,26 +312,42 @@ private struct PermissionPromptView: View {
     @EnvironmentObject private var appState: AppState
 
     var body: some View {
-        VStack(spacing: 17) {
+        VStack(spacing: 16) {
             Image(systemName: "command.square.fill")
-                .font(.system(size: 48, weight: .light))
+                .font(.system(size: 42, weight: .light))
                 .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(.cyan)
 
-            Text("Allow Keyveil to read shortcuts")
+            Text("Finish setting up Keyveil")
                 .font(.system(size: 21, weight: .semibold, design: .rounded))
 
-            Text("Keyveil reads menu titles and keyboard shortcuts from the active app.\nIt never records what you type.")
+            Text("Two macOS permissions are required. Choose one below; Keyveil will close before the system authorization appears.")
                 .multilineTextAlignment(.center)
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
                 .lineSpacing(3)
+                .frame(maxWidth: 460)
 
-            Button("Open Accessibility Settings") {
-                appState.openAccessibilitySettings()
+            VStack(spacing: 8) {
+                PermissionStatusRow(
+                    title: "Accessibility",
+                    detail: "Reads menu names and shortcut metadata",
+                    systemImage: "accessibility",
+                    isGranted: appState.isAccessibilityGranted
+                ) {
+                    appState.requestAccessibilityFromOnboarding()
+                }
+
+                PermissionStatusRow(
+                    title: "Input Monitoring",
+                    detail: "Detects when Command is held",
+                    systemImage: "keyboard",
+                    isGranted: appState.isInputMonitoringGranted
+                ) {
+                    appState.requestInputMonitoringFromOnboarding()
+                }
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
+            .frame(maxWidth: 500)
 
             Button("Not Now") {
                 appState.closeOverlay()
@@ -341,6 +357,50 @@ private struct PermissionPromptView: View {
             .foregroundStyle(.secondary)
         }
         .padding(54)
+    }
+}
+
+private struct PermissionStatusRow: View {
+    let title: String
+    let detail: String
+    let systemImage: String
+    let isGranted: Bool
+    let action: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: systemImage)
+                .font(.system(size: 16, weight: .medium))
+                .frame(width: 24)
+                .foregroundStyle(isGranted ? .green : .cyan)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 12, weight: .semibold))
+                Text(detail)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            if isGranted {
+                Label("Granted", systemImage: "checkmark.circle.fill")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.green)
+            } else {
+                Button("Allow", action: action)
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+            }
+        }
+        .padding(.horizontal, 14)
+        .frame(height: 54)
+        .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(.white.opacity(0.08), lineWidth: 0.7)
+        }
     }
 }
 

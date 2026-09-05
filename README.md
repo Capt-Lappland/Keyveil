@@ -50,7 +50,14 @@ Create a signed local `.app` bundle:
 open dist/Keyveil.app
 ```
 
-The first launch opens the macOS Accessibility permission prompt. Enable Keyveil under **System Settings → Privacy & Security → Accessibility**, then relaunch it.
+On first launch, Keyveil presents a non-floating setup window for its two required permissions. Choosing **Allow** dismisses Keyveil before macOS presents the authorization interface, so the setup window never covers System Settings.
+
+Enable Keyveil in both locations if macOS asks:
+
+- **System Settings → Privacy & Security → Accessibility**
+- **System Settings → Privacy & Security → Input Monitoring**
+
+If a locally rebuilt copy stops responding to Command, remove its old entries from both lists, add the current app again, and relaunch. Ad-hoc development signatures change between builds.
 
 ## Development preview
 
@@ -58,6 +65,12 @@ To inspect the UI with deterministic sample data without granting Accessibility 
 
 ```bash
 swift run Keyveil --preview
+```
+
+Preview the first-launch permission UI without automatically requesting permissions:
+
+```bash
+swift run Keyveil --preview-permissions
 ```
 
 The original browser-based interaction study is preserved in [`DesignPrototype`](DesignPrototype/).
