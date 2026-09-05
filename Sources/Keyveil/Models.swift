@@ -49,12 +49,10 @@ final class AppState: ObservableObject {
     @Published var applicationIcon: NSImage?
     @Published var applicationPID: pid_t = 0
     @Published var groups: [ShortcutGroup] = []
-    @Published var searchText = ""
     @Published var isLoading = false
     @Published var isPermissionPromptVisible = false
     @Published private(set) var permissionRevision = 0
     @Published var isPinned = false
-    @Published var searchFocusRequest = 0
     @Published var holdDelay: TimeInterval {
         didSet {
             UserDefaults.standard.set(holdDelay, forKey: Self.holdDelayKey)
@@ -93,21 +91,8 @@ final class AppState: ObservableObject {
         isAccessibilityGranted && isInputMonitoringGranted
     }
 
-    var filteredGroups: [ShortcutGroup] {
-        guard !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return groups
-        }
-        let query = searchText.localizedLowercase
-        return groups.compactMap { group in
-            let items = group.shortcuts.filter {
-                $0.title.localizedLowercase.contains(query) || $0.keys.joined().localizedLowercase.contains(query)
-            }
-            return items.isEmpty ? nil : ShortcutGroup(title: group.title, shortcuts: items)
-        }
-    }
-
     var shortcutCount: Int {
-        filteredGroups.reduce(0) { $0 + $1.shortcuts.count }
+        groups.reduce(0) { $0 + $1.shortcuts.count }
     }
 
     func updateApplication(_ application: NSRunningApplication) {
@@ -151,10 +136,6 @@ final class AppState: ObservableObject {
             self.groups = loadedGroups
             self.isLoading = false
         }
-    }
-
-    func requestSearchFocus() {
-        searchFocusRequest &+= 1
     }
 
     func closeOverlay() {

@@ -189,7 +189,7 @@ final class ShortcutPanelController {
         self.appState = appState
         hostingView = NSHostingView(rootView: AnyView(ShortcutPanelView().environmentObject(appState)))
         panel = OverlayPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 940, height: 560),
+            contentRect: NSRect(x: 0, y: 0, width: 1180, height: 720),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -216,7 +216,7 @@ final class ShortcutPanelController {
         panel.level = .popUpMenu
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         panel.hidesOnDeactivate = false
-        centerOnActiveScreen()
+        centerOnActiveScreen(preferredSize: NSSize(width: 1180, height: 720))
         appState.isPermissionPromptVisible = false
         appState.isPinned = pinned
         panel.alphaValue = 0
@@ -224,9 +224,6 @@ final class ShortcutPanelController {
         if pinned {
             panel.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { [weak appState] in
-                appState?.requestSearchFocus()
-            }
         } else {
             panel.orderFrontRegardless()
         }
@@ -243,7 +240,7 @@ final class ShortcutPanelController {
         panel.level = .normal
         panel.collectionBehavior = [.moveToActiveSpace]
         panel.hidesOnDeactivate = true
-        centerOnActiveScreen()
+        centerOnActiveScreen(preferredSize: NSSize(width: 760, height: 520))
         appState.isPermissionPromptVisible = true
         appState.isPinned = false
         panel.alphaValue = 1
@@ -258,7 +255,6 @@ final class ShortcutPanelController {
         transitionGeneration &+= 1
         let generation = transitionGeneration
         appState.isPinned = false
-        appState.searchText = ""
 
         NSAnimationContext.runAnimationGroup({ context in
             context.duration = 0.12
@@ -272,13 +268,13 @@ final class ShortcutPanelController {
         appState.isPermissionPromptVisible = false
     }
 
-    private func centerOnActiveScreen() {
+    private func centerOnActiveScreen(preferredSize: NSSize) {
         let mouseLocation = NSEvent.mouseLocation
         let screen = NSScreen.screens.first(where: { NSMouseInRect(mouseLocation, $0.frame, false) }) ?? NSScreen.main
         guard let visibleFrame = screen?.visibleFrame else { return }
 
-        let width = min(940, visibleFrame.width - 80)
-        let height = min(560, visibleFrame.height - 80)
+        let width = min(preferredSize.width, visibleFrame.width - 48)
+        let height = min(preferredSize.height, visibleFrame.height - 48)
         let origin = NSPoint(
             x: visibleFrame.midX - width / 2,
             y: visibleFrame.midY - height / 2 + 18

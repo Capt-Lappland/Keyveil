@@ -3,10 +3,6 @@ import SwiftUI
 
 struct ShortcutPanelView: View {
     @EnvironmentObject private var appState: AppState
-    @FocusState private var searchIsFocused: Bool
-    @State private var pageIndex = 0
-
-    private let groupsPerPage = 3
 
     var body: some View {
         ZStack {
@@ -25,13 +21,7 @@ struct ShortcutPanelView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(18)
-        .onChange(of: appState.searchFocusRequest) { _, _ in
-            searchIsFocused = true
-        }
-        .onChange(of: appState.filteredGroups.map(\.id)) { _, _ in
-            pageIndex = 0
-        }
+        .padding(14)
         .onExitCommand {
             appState.closeOverlay()
         }
@@ -40,7 +30,7 @@ struct ShortcutPanelView: View {
     private var shortcutContent: some View {
         VStack(spacing: 0) {
             header
-            Divider().opacity(0.35).padding(.vertical, 18)
+            Divider().opacity(0.35).padding(.vertical, 16)
 
             if appState.isLoading {
                 Spacer()
@@ -51,7 +41,7 @@ struct ShortcutPanelView: View {
                     .foregroundStyle(.secondary)
                     .padding(.top, 10)
                 Spacer()
-            } else if appState.filteredGroups.isEmpty {
+            } else if appState.groups.isEmpty {
                 emptyState
             } else {
                 groups
@@ -59,7 +49,8 @@ struct ShortcutPanelView: View {
 
             footer
         }
-        .padding(24)
+        .padding(.horizontal, 28)
+        .padding(.vertical, 24)
     }
 
     private var header: some View {
@@ -71,48 +62,28 @@ struct ShortcutPanelView: View {
                         .scaledToFit()
                 } else {
                     Image(systemName: "app.dashed")
-                        .font(.system(size: 24))
+                        .font(.system(size: 30))
                 }
             }
-            .frame(width: 46, height: 46)
-            .shadow(color: .black.opacity(0.25), radius: 8, y: 5)
+            .frame(width: 60, height: 60)
+            .shadow(color: .black.opacity(0.20), radius: 7, y: 4)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text("CURRENT APP")
-                    .font(.system(size: 9, weight: .semibold))
-                    .tracking(1.15)
+                    .font(.system(size: 10, weight: .semibold))
+                    .tracking(1.3)
                     .foregroundStyle(.secondary)
                 Text(appState.applicationName)
-                    .font(.system(size: 21, weight: .semibold, design: .rounded))
+                    .font(.system(size: 27, weight: .semibold, design: .rounded))
                     .lineLimit(1)
             }
 
-            Spacer(minLength: 28)
-
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
-                TextField("Search shortcuts", text: $appState.searchText)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 12))
-                    .focused($searchIsFocused)
-                KeycapView(label: "⌘K", compact: true)
-                    .opacity(0.62)
-            }
-            .padding(.horizontal, 12)
-            .frame(width: 290, height: 38)
-            .background(.black.opacity(0.16), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 11, style: .continuous)
-                    .stroke(.white.opacity(0.09), lineWidth: 0.8)
-            }
-
-            Spacer(minLength: 28)
+            Spacer(minLength: 40)
 
             HStack(spacing: 8) {
                 Circle()
                     .fill(Color.mint)
-                    .frame(width: 6, height: 6)
+                    .frame(width: 8, height: 8)
                     .shadow(color: .mint.opacity(0.7), radius: 5)
                 KeycapView(label: "⌘", compact: true)
                 Text(appState.isPinned ? "Pinned" : "Hold")
@@ -123,89 +94,55 @@ struct ShortcutPanelView: View {
                         appState.closeOverlay()
                     } label: {
                         Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 16))
                             .foregroundStyle(.tertiary)
                     }
                     .buttonStyle(.plain)
                     .help("Close Keyveil")
                 }
             }
-            .font(.system(size: 11))
+            .font(.system(size: 13, weight: .medium))
         }
     }
 
     private var groups: some View {
-        VStack(spacing: 8) {
-            HStack(alignment: .top, spacing: 0) {
-                ForEach(Array(visibleGroups.enumerated()), id: \.element.id) { index, group in
-                    ShortcutGroupView(group: group)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .padding(.horizontal, 14)
+        GeometryReader { proxy in
+            let columnCount = proxy.size.width >= 860 ? 3 : 2
+            let columns = balancedColumns(count: columnCount)
 
-                    if index < visibleGroups.count - 1 {
-                        Divider().opacity(0.32)
-                    }
-                }
-            }
-            .frame(maxHeight: .infinity)
-
-            if pageCount > 1 {
-                pageControls
-            }
-        }
-    }
-
-    private var visibleGroups: [ShortcutGroup] {
-        let groups = appState.filteredGroups
-        guard !groups.isEmpty else { return [] }
-        let safePage = min(pageIndex, pageCount - 1)
-        let start = safePage * groupsPerPage
-        let end = min(start + groupsPerPage, groups.count)
-        return Array(groups[start..<end])
-    }
-
-    private var pageCount: Int {
-        max(1, Int(ceil(Double(appState.filteredGroups.count) / Double(groupsPerPage))))
-    }
-
-    private var pageControls: some View {
-        HStack(spacing: 10) {
-            Button {
-                withAnimation(.snappy(duration: 0.2)) {
-                    pageIndex = max(0, pageIndex - 1)
-                }
-            } label: {
-                Image(systemName: "chevron.left")
-            }
-            .disabled(pageIndex == 0)
-
-            HStack(spacing: 6) {
-                ForEach(0..<pageCount, id: \.self) { page in
-                    Button {
-                        withAnimation(.snappy(duration: 0.2)) {
-                            pageIndex = page
+            ScrollView(.vertical, showsIndicators: false) {
+                HStack(alignment: .top, spacing: 0) {
+                    ForEach(columns.indices, id: \.self) { index in
+                        LazyVStack(alignment: .leading, spacing: 24) {
+                            ForEach(columns[index]) { group in
+                                ShortcutGroupView(group: group)
+                            }
                         }
-                    } label: {
-                        Capsule()
-                            .fill(.primary.opacity(page == pageIndex ? 0.62 : 0.16))
-                            .frame(width: page == pageIndex ? 14 : 5, height: 5)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
+                        .frame(maxWidth: .infinity, alignment: .top)
+                        .padding(.horizontal, 18)
 
-            Button {
-                withAnimation(.snappy(duration: 0.2)) {
-                    pageIndex = min(pageCount - 1, pageIndex + 1)
+                        if index < columns.count - 1 {
+                            Divider().opacity(0.28)
+                        }
+                    }
                 }
-            } label: {
-                Image(systemName: "chevron.right")
+                .padding(.vertical, 2)
             }
-            .disabled(pageIndex == pageCount - 1)
         }
-        .buttonStyle(.plain)
-        .font(.system(size: 9, weight: .semibold))
-        .foregroundStyle(.secondary)
-        .frame(height: 18)
+    }
+
+    private func balancedColumns(count: Int) -> [[ShortcutGroup]] {
+        let count = max(1, count)
+        var columns = Array(repeating: [ShortcutGroup](), count: count)
+        var weights = Array(repeating: 0, count: count)
+
+        for group in appState.groups {
+            let target = weights.indices.min(by: { weights[$0] < weights[$1] }) ?? 0
+            columns[target].append(group)
+            weights[target] += max(3, group.shortcuts.count) + 2
+        }
+
+        return columns
     }
 
     private var emptyState: some View {
@@ -214,10 +151,10 @@ struct ShortcutPanelView: View {
             Image(systemName: "keyboard.badge.ellipsis")
                 .font(.system(size: 31, weight: .light))
                 .foregroundStyle(.secondary)
-            Text(appState.searchText.isEmpty ? "No shortcuts found" : "No matching shortcuts")
-                .font(.system(size: 13, weight: .medium))
-            Text(appState.searchText.isEmpty ? "Try refreshing after granting Accessibility access." : "Try a different search term.")
-                .font(.system(size: 11))
+            Text("No shortcuts found")
+                .font(.system(size: 16, weight: .medium))
+            Text("Try refreshing after granting Accessibility access.")
+                .font(.system(size: 13))
                 .foregroundStyle(.tertiary)
             Spacer()
         }
@@ -230,19 +167,19 @@ struct ShortcutPanelView: View {
             Spacer()
             HStack(spacing: 6) {
                 if appState.isPinned {
-                    Text("Press Esc or double-tap")
+                    Text("Scroll to browse · Press Esc or double-tap")
                     KeycapView(label: "⌘", compact: true)
                     Text("to close")
                 } else {
-                    Text("Release")
+                    Text("Two-finger scroll · Release")
                     KeycapView(label: "⌘", compact: true)
                     Text("to close")
                 }
             }
         }
-        .font(.system(size: 10))
+        .font(.system(size: 11.5, weight: .medium))
         .foregroundStyle(.tertiary)
-        .padding(.top, 15)
+        .padding(.top, 12)
     }
 }
 
@@ -252,31 +189,29 @@ private struct ShortcutGroupView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Label(group.title, systemImage: group.symbol)
-                .font(.system(size: 11, weight: .semibold))
+                .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(.cyan.opacity(0.86))
-                .padding(.bottom, 8)
+                .padding(.bottom, 10)
 
-            ScrollView(.vertical, showsIndicators: false) {
-                LazyVStack(spacing: 0) {
-                    ForEach(group.shortcuts) { shortcut in
-                        HStack(spacing: 10) {
-                            Text(shortcut.title)
-                                .font(.system(size: 12))
-                                .lineLimit(1)
-                                .truncationMode(.tail)
-                            Spacer(minLength: 6)
-                            HStack(spacing: 3) {
-                                ForEach(Array(shortcut.keys.enumerated()), id: \.offset) { _, key in
-                                    KeycapView(label: key)
-                                }
+            LazyVStack(spacing: 0) {
+                ForEach(group.shortcuts) { shortcut in
+                    HStack(spacing: 12) {
+                        Text(shortcut.title)
+                            .font(.system(size: 15))
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                        Spacer(minLength: 8)
+                        HStack(spacing: 4) {
+                            ForEach(Array(shortcut.keys.enumerated()), id: \.offset) { _, key in
+                                KeycapView(label: key)
                             }
                         }
-                        .frame(height: 42)
-                        .opacity(shortcut.isEnabled ? 1 : 0.42)
+                    }
+                    .frame(height: 43)
+                    .opacity(shortcut.isEnabled ? 1 : 0.42)
 
-                        if shortcut.id != group.shortcuts.last?.id {
-                            Divider().opacity(0.24)
-                        }
+                    if shortcut.id != group.shortcuts.last?.id {
+                        Divider().opacity(0.24)
                     }
                 }
             }
@@ -290,19 +225,19 @@ struct KeycapView: View {
 
     var body: some View {
         Text(label)
-            .font(.system(size: compact ? 9 : 10, weight: .medium, design: .rounded))
-            .frame(minWidth: compact ? 17 : 20, minHeight: compact ? 17 : 20)
-            .padding(.horizontal, compact ? 3 : 2)
+            .font(.system(size: compact ? 11 : 12, weight: .semibold, design: .rounded))
+            .frame(minWidth: compact ? 22 : 26, minHeight: compact ? 22 : 26)
+            .padding(.horizontal, compact ? 4 : 3)
             .background(
                 LinearGradient(
                     colors: [.white.opacity(0.13), .white.opacity(0.07)],
                     startPoint: .top,
                     endPoint: .bottom
                 ),
-                in: RoundedRectangle(cornerRadius: compact ? 5 : 6, style: .continuous)
+                in: RoundedRectangle(cornerRadius: compact ? 6 : 7, style: .continuous)
             )
             .overlay {
-                RoundedRectangle(cornerRadius: compact ? 5 : 6, style: .continuous)
+                RoundedRectangle(cornerRadius: compact ? 6 : 7, style: .continuous)
                     .stroke(.white.opacity(0.13), lineWidth: 0.7)
             }
     }

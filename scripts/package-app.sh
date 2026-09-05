@@ -16,5 +16,9 @@ cp "$PROJECT_DIR/.build/$CONFIGURATION/Keyveil" "$MACOS_DIR/Keyveil"
 cp "$PROJECT_DIR/Info.plist" "$CONTENTS_DIR/Info.plist"
 xattr -cr "$APP_DIR"
 codesign --force --deep --sign - "$APP_DIR"
+# Finder/iCloud Drive can reattach metadata as soon as the bundle appears.
+# Extended attributes are not part of the code signature, so clear them once
+# more after signing to keep strict verification and distribution tools happy.
+xattr -cr "$APP_DIR"
 
 echo "Created $APP_DIR"

@@ -9,12 +9,12 @@ Keyveil is a lightweight macOS menu bar utility inspired by CheatSheet. Hold the
 ## Features
 
 - Detects a long press of either `Command` key anywhere in macOS
-- Double-tap `Command` to pin the overlay, focus search, and browse without holding a key
+- Double-tap `Command` to pin the overlay and browse without holding a key
 - Reads shortcuts from the frontmost app through the macOS Accessibility API
 - Groups shortcuts by their native menu sections
 - Ignores normal combinations such as `Command-C`, so they do not open the overlay
 - Uses native Liquid Glass on macOS 26 and a system material fallback on macOS 14–15
-- Includes three-column paging, complete per-menu lists, search, adjustable hold delay, multi-display placement, and full-screen Space support
+- Uses a large adaptive 2–3 column shortcut wall with continuous vertical scrolling, adjustable hold delay, multi-display placement, and full-screen Space support
 - Caches each app's shortcuts for fast repeat display and safely ignores stale background reads
 - Preserves temporarily disabled menu shortcuts and displays them with reduced emphasis
 - Runs as a small menu bar app without a Dock icon
@@ -33,7 +33,7 @@ Keyveil does not record keystrokes, window content, or typed text. The global ev
 - Release `Command`: close the temporary overlay
 - Double-tap `Command`: pin or unpin Keyveil
 - `Escape`: close a pinned overlay
-- Use the page controls to browse additional menu categories
+- Keep holding `Command` and use two-finger vertical scrolling over the panel to browse more shortcuts
 
 ## Build
 
