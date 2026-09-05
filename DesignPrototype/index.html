@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#07101f" />
+    <title>Keyveil — Mac 快捷键浮层</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <div class="wallpaper" aria-hidden="true">
+      <div class="aurora aurora-one"></div>
+      <div class="aurora aurora-two"></div>
+      <div class="grain"></div>
+    </div>
+
+    <header class="menu-bar">
+      <div class="menu-left">
+        <span class="apple">●</span>
+        <strong id="menuAppName">Safari</strong>
+        <span>文件</span><span>编辑</span><span>显示</span><span>历史记录</span><span>书签</span><span>窗口</span><span>帮助</span>
+      </div>
+      <div class="menu-right">
+        <span class="menu-icon">⌁</span><span class="menu-icon">⌕</span><span id="clock">9月5日 周六 09:41</span>
+      </div>
+    </header>
+
+    <main class="desktop">
+      <section class="browser-window" aria-label="背景中的浏览器窗口">
+        <div class="window-toolbar">
+          <div class="traffic-lights"><i></i><i></i><i></i></div>
+          <div class="browser-nav"><span>‹</span><span>›</span></div>
+          <div class="address">⌕&nbsp;&nbsp; keyveil.app / welcome</div>
+          <div class="toolbar-actions"><span>⌄</span><span>□</span></div>
+        </div>
+        <div class="browser-content">
+          <div class="content-pill">KEYVEIL FOR MAC</div>
+          <h1>不必记住。<br />只需按住。</h1>
+          <p>在任何 App 中按住 Command，常用操作自然浮现。</p>
+          <button type="button" id="demoButton">按住 ⌘ 试试看</button>
+        </div>
+      </section>
+
+      <aside class="app-switcher glass" aria-label="模拟当前应用">
+        <button class="app-choice active" data-app="Safari" type="button"><span class="mini-icon safari">◢</span><span>Safari</span></button>
+        <button class="app-choice" data-app="Figma" type="button"><span class="mini-icon figma">F</span><span>Figma</span></button>
+        <button class="app-choice" data-app="Xcode" type="button"><span class="mini-icon xcode">⌁</span><span>Xcode</span></button>
+      </aside>
+
+      <div class="hint glass" id="hint"><span class="keycap">⌘</span><span>长按查看当前 App 快捷键</span></div>
+
+      <section class="shortcut-overlay" id="shortcutOverlay" aria-hidden="true">
+        <div class="backdrop"></div>
+        <article class="palette glass" role="dialog" aria-modal="true" aria-labelledby="paletteTitle">
+          <div class="spectral-edge"></div>
+          <header class="palette-header">
+            <div class="app-identity">
+              <div class="app-icon safari" id="appIcon">◢</div>
+              <div>
+                <div class="eyebrow">当前应用</div>
+                <h2 id="paletteTitle">Safari</h2>
+              </div>
+            </div>
+
+            <label class="search-box">
+              <span>⌕</span>
+              <input id="shortcutSearch" type="search" placeholder="搜索快捷键" autocomplete="off" />
+              <kbd>⌘ K</kbd>
+            </label>
+
+            <div class="hold-status"><span class="pulse"></span><kbd>⌘</kbd><span>按住中</span></div>
+          </header>
+
+          <div class="divider"></div>
+          <div class="shortcut-grid" id="shortcutGrid"></div>
+
+          <footer class="palette-footer">
+            <span><i class="spark"></i><span id="shortcutCount">15 个快捷键</span></span>
+            <span>松开 <kbd>⌘</kbd> 关闭</span>
+          </footer>
+        </article>
+      </section>
+    </main>
+
+    <nav class="dock glass" aria-label="Dock">
+      <button class="dock-icon finder" type="button" aria-label="Finder">◐</button>
+      <button class="dock-icon safari active" type="button" aria-label="Safari">◢</button>
+      <button class="dock-icon mail" type="button" aria-label="Mail">✉</button>
+      <button class="dock-icon messages" type="button" aria-label="Messages">●</button>
+      <button class="dock-icon notes" type="button" aria-label="Notes">≡</button>
+      <span class="dock-separator"></span>
+      <button class="dock-icon settings" type="button" aria-label="Settings">⚙</button>
+    </nav>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
