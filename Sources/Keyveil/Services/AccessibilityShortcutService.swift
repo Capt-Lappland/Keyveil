@@ -28,10 +28,16 @@ struct AccessibilityShortcutService: Sendable {
 
             if role == kAXMenuItemRole as String,
                !title.isEmpty,
-               boolAttribute(child, kAXEnabledAttribute),
                let keys = shortcutKeys(for: child),
                !keys.isEmpty {
-                result.append(ShortcutItem(title: normalizedTitle(title), keys: keys, path: childPath))
+                result.append(
+                    ShortcutItem(
+                        title: normalizedTitle(title),
+                        keys: keys,
+                        path: childPath,
+                        isEnabled: boolAttribute(child, kAXEnabledAttribute)
+                    )
+                )
             }
 
             result.append(contentsOf: collectShortcuts(from: child, path: childPath))

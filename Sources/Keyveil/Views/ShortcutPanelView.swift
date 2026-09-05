@@ -3,6 +3,10 @@ import SwiftUI
 
 struct ShortcutPanelView: View {
     @EnvironmentObject private var appState: AppState
+    @FocusState private var searchIsFocused: Bool
+    @State private var pageIndex = 0
+
+    private let groupsPerPage = 3
 
     var body: some View {
         ZStack {
@@ -22,6 +26,15 @@ struct ShortcutPanelView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(18)
+        .onChange(of: appState.searchFocusRequest) { _, _ in
+            searchIsFocused = true
+        }
+        .onChange(of: appState.filteredGroups.map(\.id)) { _, _ in
+            pageIndex = 0
+        }
+        .onExitCommand {
+            appState.closeOverlay()
+        }
     }
 
     private var shortcutContent: some View {
@@ -82,6 +95,7 @@ struct ShortcutPanelView: View {
                 TextField("Search shortcuts", text: $appState.searchText)
                     .textFieldStyle(.plain)
                     .font(.system(size: 12))
+                    .focused($searchIsFocused)
                 KeycapView(label: "⌘K", compact: true)
                     .opacity(0.62)
             }
@@ -101,28 +115,97 @@ struct ShortcutPanelView: View {
                     .frame(width: 6, height: 6)
                     .shadow(color: .mint.opacity(0.7), radius: 5)
                 KeycapView(label: "⌘", compact: true)
-                Text("Hold")
+                Text(appState.isPinned ? "Pinned" : "Hold")
                     .foregroundStyle(.secondary)
+
+                if appState.isPinned {
+                    Button {
+                        appState.closeOverlay()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.tertiary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Close Keyveil")
+                }
             }
             .font(.system(size: 11))
         }
     }
 
     private var groups: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            LazyHStack(alignment: .top, spacing: 0) {
-                ForEach(Array(appState.filteredGroups.enumerated()), id: \.element.id) { index, group in
+        VStack(spacing: 8) {
+            HStack(alignment: .top, spacing: 0) {
+                ForEach(Array(visibleGroups.enumerated()), id: \.element.id) { index, group in
                     ShortcutGroupView(group: group)
-                        .frame(width: 238)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .padding(.horizontal, 14)
 
-                    if index < appState.filteredGroups.count - 1 {
+                    if index < visibleGroups.count - 1 {
                         Divider().opacity(0.32)
                     }
                 }
             }
+            .frame(maxHeight: .infinity)
+
+            if pageCount > 1 {
+                pageControls
+            }
         }
-        .frame(maxHeight: .infinity)
+    }
+
+    private var visibleGroups: [ShortcutGroup] {
+        let groups = appState.filteredGroups
+        guard !groups.isEmpty else { return [] }
+        let safePage = min(pageIndex, pageCount - 1)
+        let start = safePage * groupsPerPage
+        let end = min(start + groupsPerPage, groups.count)
+        return Array(groups[start..<end])
+    }
+
+    private var pageCount: Int {
+        max(1, Int(ceil(Double(appState.filteredGroups.count) / Double(groupsPerPage))))
+    }
+
+    private var pageControls: some View {
+        HStack(spacing: 10) {
+            Button {
+                withAnimation(.snappy(duration: 0.2)) {
+                    pageIndex = max(0, pageIndex - 1)
+                }
+            } label: {
+                Image(systemName: "chevron.left")
+            }
+            .disabled(pageIndex == 0)
+
+            HStack(spacing: 6) {
+                ForEach(0..<pageCount, id: \.self) { page in
+                    Button {
+                        withAnimation(.snappy(duration: 0.2)) {
+                            pageIndex = page
+                        }
+                    } label: {
+                        Capsule()
+                            .fill(.primary.opacity(page == pageIndex ? 0.62 : 0.16))
+                            .frame(width: page == pageIndex ? 14 : 5, height: 5)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            Button {
+                withAnimation(.snappy(duration: 0.2)) {
+                    pageIndex = min(pageCount - 1, pageIndex + 1)
+                }
+            } label: {
+                Image(systemName: "chevron.right")
+            }
+            .disabled(pageIndex == pageCount - 1)
+        }
+        .buttonStyle(.plain)
+        .font(.system(size: 9, weight: .semibold))
+        .foregroundStyle(.secondary)
+        .frame(height: 18)
     }
 
     private var emptyState: some View {
@@ -146,9 +229,15 @@ struct ShortcutPanelView: View {
             Label("\(appState.shortcutCount) shortcuts", systemImage: "sparkles")
             Spacer()
             HStack(spacing: 6) {
-                Text("Release")
-                KeycapView(label: "⌘", compact: true)
-                Text("to close")
+                if appState.isPinned {
+                    Text("Press Esc or double-tap")
+                    KeycapView(label: "⌘", compact: true)
+                    Text("to close")
+                } else {
+                    Text("Release")
+                    KeycapView(label: "⌘", compact: true)
+                    Text("to close")
+                }
             }
         }
         .font(.system(size: 10))
@@ -167,23 +256,28 @@ private struct ShortcutGroupView: View {
                 .foregroundStyle(.cyan.opacity(0.86))
                 .padding(.bottom, 8)
 
-            ForEach(group.shortcuts.prefix(8)) { shortcut in
-                HStack(spacing: 10) {
-                    Text(shortcut.title)
-                        .font(.system(size: 12))
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                    Spacer(minLength: 6)
-                    HStack(spacing: 3) {
-                        ForEach(Array(shortcut.keys.enumerated()), id: \.offset) { _, key in
-                            KeycapView(label: key)
+            ScrollView(.vertical, showsIndicators: false) {
+                LazyVStack(spacing: 0) {
+                    ForEach(group.shortcuts) { shortcut in
+                        HStack(spacing: 10) {
+                            Text(shortcut.title)
+                                .font(.system(size: 12))
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                            Spacer(minLength: 6)
+                            HStack(spacing: 3) {
+                                ForEach(Array(shortcut.keys.enumerated()), id: \.offset) { _, key in
+                                    KeycapView(label: key)
+                                }
+                            }
+                        }
+                        .frame(height: 42)
+                        .opacity(shortcut.isEnabled ? 1 : 0.42)
+
+                        if shortcut.id != group.shortcuts.last?.id {
+                            Divider().opacity(0.24)
                         }
                     }
-                }
-                .frame(height: 42)
-
-                if shortcut.id != group.shortcuts.prefix(8).last?.id {
-                    Divider().opacity(0.24)
                 }
             }
         }
@@ -240,8 +334,7 @@ private struct PermissionPromptView: View {
             .controlSize(.large)
 
             Button("Not Now") {
-                NSApp.windows.first(where: { $0 is OverlayPanel })?.orderOut(nil)
-                appState.isPermissionPromptVisible = false
+                appState.closeOverlay()
             }
             .buttonStyle(.plain)
             .font(.system(size: 11))

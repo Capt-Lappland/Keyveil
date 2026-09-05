@@ -23,7 +23,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if isPreviewMode {
             appState.loadPreviewData()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
-                self?.panelController?.show()
+                self?.panelController?.show(pinned: true)
             }
         } else {
             observeFrontmostApplication()
@@ -70,19 +70,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor in
-                self?.refreshCurrentApplication()
+                guard let self else { return }
+                self.refreshCurrentApplication()
+                if self.panelController?.isPinned == true {
+                    self.appState.loadShortcuts()
+                }
             }
         }
     }
 
     private func startCommandMonitor() {
-        let monitor = CommandHoldMonitor(delay: appState.holdDelay) { [weak self] isHeld in
+        let monitor = CommandHoldMonitor(delay: appState.holdDelay) { [weak self] event in
             Task { @MainActor in
                 guard let self else { return }
-                if isHeld {
-                    self.presentForCurrentApplication()
-                } else {
+                switch event {
+                case .holdBegan:
+                    if self.panelController?.isPinned != true {
+                        self.presentForCurrentApplication(pinned: false)
+                    }
+                case .released:
                     self.panelController?.hide()
+                case .togglePin:
+                    if self.panelController?.isPinned == true {
+                        self.panelController?.hide(force: true)
+                    } else {
+                        self.presentForCurrentApplication(pinned: true)
+                    }
                 }
             }
         }
@@ -92,7 +105,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         appState.$holdDelay
             .dropFirst()
             .sink { [weak self] delay in
-                self?.commandMonitor?.delay = delay
+                self?.commandMonitor?.updateDelay(delay)
             }
             .store(in: &cancellables)
     }
@@ -103,7 +116,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         appState.updateApplication(application)
     }
 
-    private func presentForCurrentApplication() {
+    private func presentForCurrentApplication(pinned: Bool) {
         refreshCurrentApplication()
 
         guard appState.isAccessibilityGranted else {
@@ -113,16 +126,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         appState.loadShortcuts()
-        panelController?.show()
+        panelController?.show(pinned: pinned)
     }
 
     @objc private func showPanel() {
-        presentForCurrentApplication()
+        presentForCurrentApplication(pinned: true)
     }
 
     @objc private func refreshShortcuts() {
         refreshCurrentApplication()
-        appState.loadShortcuts()
+        appState.loadShortcuts(forceRefresh: true)
     }
 
     @objc private func openAccessibilitySettings() {
@@ -144,6 +157,9 @@ final class ShortcutPanelController {
     private let panel: OverlayPanel
     private let appState: AppState
     private let hostingView: NSHostingView<AnyView>
+    private var transitionGeneration = 0
+
+    var isPinned: Bool { appState.isPinned }
 
     init(appState: AppState) {
         self.appState = appState
@@ -165,13 +181,28 @@ final class ShortcutPanelController {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         panel.hidesOnDeactivate = false
         panel.isMovableByWindowBackground = false
+
+        appState.dismissOverlay = { [weak self] in
+            self?.hide(force: true)
+        }
     }
 
-    func show() {
+    func show(pinned: Bool) {
+        transitionGeneration &+= 1
         centerOnActiveScreen()
         appState.isPermissionPromptVisible = false
+        appState.isPinned = pinned
         panel.alphaValue = 0
-        panel.orderFrontRegardless()
+
+        if pinned {
+            panel.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { [weak appState] in
+                appState?.requestSearchFocus()
+            }
+        } else {
+            panel.orderFrontRegardless()
+        }
 
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.18
@@ -181,20 +212,30 @@ final class ShortcutPanelController {
     }
 
     func showPermissionPrompt() {
+        transitionGeneration &+= 1
         centerOnActiveScreen()
         appState.isPermissionPromptVisible = true
+        appState.isPinned = false
         panel.alphaValue = 1
         panel.orderFrontRegardless()
     }
 
-    func hide() {
+    func hide(force: Bool = false) {
         guard panel.isVisible else { return }
+        guard force || !appState.isPinned else { return }
+
+        transitionGeneration &+= 1
+        let generation = transitionGeneration
+        appState.isPinned = false
+        appState.searchText = ""
+
         NSAnimationContext.runAnimationGroup({ context in
             context.duration = 0.12
             panel.animator().alphaValue = 0
-        }, completionHandler: { [weak panel] in
+        }, completionHandler: { [weak self] in
             DispatchQueue.main.async {
-                panel?.orderOut(nil)
+                guard let self, self.transitionGeneration == generation else { return }
+                self.panel.orderOut(nil)
             }
         })
         appState.isPermissionPromptVisible = false

@@ -1,18 +1,28 @@
 import AppKit
 import CoreGraphics
 
-final class CommandHoldMonitor: @unchecked Sendable {
-    var delay: TimeInterval
+enum CommandHoldEvent: Sendable {
+    case holdBegan
+    case released
+    case togglePin
+}
 
+final class CommandHoldMonitor: @unchecked Sendable {
     private let stateQueue = DispatchQueue(label: "app.keyveil.command-monitor")
-    private var callback: (Bool) -> Void
+    private let callback: (CommandHoldEvent) -> Void
+    private var delay: TimeInterval
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     private var workItem: DispatchWorkItem?
     private var commandIsDown = false
     private var shortcutWasPressed = false
+    private var pressBeganAt: TimeInterval = 0
+    private var lastTapReleasedAt: TimeInterval?
+    private var toggledPinOnCurrentPress = false
 
-    init(delay: TimeInterval, callback: @escaping (Bool) -> Void) {
+    private let doubleTapInterval: TimeInterval = 0.32
+
+    init(delay: TimeInterval, callback: @escaping (CommandHoldEvent) -> Void) {
         self.delay = delay
         self.callback = callback
     }
@@ -46,6 +56,12 @@ final class CommandHoldMonitor: @unchecked Sendable {
         CGEvent.tapEnable(tap: tap, enable: true)
     }
 
+    func updateDelay(_ newDelay: TimeInterval) {
+        stateQueue.async { [weak self] in
+            self?.delay = newDelay
+        }
+    }
+
     func stop() {
         stateQueue.sync {
             workItem?.cancel()
@@ -62,16 +78,25 @@ final class CommandHoldMonitor: @unchecked Sendable {
     }
 
     private func handle(type: CGEventType, event: CGEvent) {
+        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            if let eventTap {
+                CGEvent.tapEnable(tap: eventTap, enable: true)
+            }
+            return
+        }
+
         let commandFlagIsSet = event.flags.contains(.maskCommand)
+        let eventTime = ProcessInfo.processInfo.systemUptime
 
         stateQueue.async { [weak self] in
             guard let self else { return }
 
             if type == .keyDown, self.commandIsDown {
                 self.shortcutWasPressed = true
+                self.lastTapReleasedAt = nil
                 self.workItem?.cancel()
                 self.workItem = nil
-                DispatchQueue.main.async { self.callback(false) }
+                DispatchQueue.main.async { self.callback(.released) }
                 return
             }
 
@@ -81,12 +106,30 @@ final class CommandHoldMonitor: @unchecked Sendable {
             if isDown, !self.commandIsDown {
                 self.commandIsDown = true
                 self.shortcutWasPressed = false
-                self.scheduleShow()
+                self.pressBeganAt = eventTime
+
+                if let lastTap = self.lastTapReleasedAt,
+                   eventTime - lastTap <= self.doubleTapInterval {
+                    self.lastTapReleasedAt = nil
+                    self.toggledPinOnCurrentPress = true
+                    self.workItem?.cancel()
+                    self.workItem = nil
+                    DispatchQueue.main.async { self.callback(.togglePin) }
+                } else {
+                    self.toggledPinOnCurrentPress = false
+                    self.scheduleShow()
+                }
             } else if !isDown, self.commandIsDown {
                 self.commandIsDown = false
                 self.workItem?.cancel()
                 self.workItem = nil
-                DispatchQueue.main.async { self.callback(false) }
+
+                let wasQuickTap = !self.shortcutWasPressed
+                    && !self.toggledPinOnCurrentPress
+                    && eventTime - self.pressBeganAt <= self.doubleTapInterval
+                self.lastTapReleasedAt = wasQuickTap ? eventTime : nil
+                self.toggledPinOnCurrentPress = false
+                DispatchQueue.main.async { self.callback(.released) }
             }
         }
     }
@@ -95,7 +138,7 @@ final class CommandHoldMonitor: @unchecked Sendable {
         workItem?.cancel()
         let item = DispatchWorkItem { [weak self] in
             guard let self, self.commandIsDown, !self.shortcutWasPressed else { return }
-            DispatchQueue.main.async { self.callback(true) }
+            DispatchQueue.main.async { self.callback(.holdBegan) }
         }
         workItem = item
         stateQueue.asyncAfter(deadline: .now() + delay, execute: item)

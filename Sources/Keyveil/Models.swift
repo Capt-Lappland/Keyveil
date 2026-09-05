@@ -6,11 +6,13 @@ struct ShortcutItem: Identifiable, Hashable, Sendable {
     let id: String
     let title: String
     let keys: [String]
+    let isEnabled: Bool
 
-    init(title: String, keys: [String], path: String) {
+    init(title: String, keys: [String], path: String, isEnabled: Bool = true) {
         self.id = "\(path)/\(title)/\(keys.joined())"
         self.title = title
         self.keys = keys
+        self.isEnabled = isEnabled
     }
 }
 
@@ -49,9 +51,33 @@ final class AppState: ObservableObject {
     @Published var searchText = ""
     @Published var isLoading = false
     @Published var isPermissionPromptVisible = false
-    @Published var holdDelay: TimeInterval = 0.55
+    @Published var isPinned = false
+    @Published var searchFocusRequest = 0
+    @Published var holdDelay: TimeInterval {
+        didSet {
+            UserDefaults.standard.set(holdDelay, forKey: Self.holdDelayKey)
+        }
+    }
+
+    var dismissOverlay: (() -> Void)?
 
     private let accessibilityService = AccessibilityShortcutService()
+    private var loadTask: Task<Void, Never>?
+    private var applicationBundleIdentifier = ""
+    private var shortcutCache: [String: CacheEntry] = [:]
+
+    private static let holdDelayKey = "commandHoldDelay"
+    private static let cacheLifetime: TimeInterval = 120
+
+    private struct CacheEntry {
+        let groups: [ShortcutGroup]
+        let loadedAt: Date
+    }
+
+    init() {
+        let savedDelay = UserDefaults.standard.double(forKey: Self.holdDelayKey)
+        holdDelay = savedDelay == 0 ? 0.55 : min(max(savedDelay, 0.3), 1.2)
+    }
 
     var isAccessibilityGranted: Bool {
         AXIsProcessTrusted()
@@ -78,20 +104,51 @@ final class AppState: ObservableObject {
         applicationName = application.localizedName ?? "Current App"
         applicationIcon = application.icon
         applicationPID = application.processIdentifier
+        applicationBundleIdentifier = application.bundleIdentifier ?? "pid:\(application.processIdentifier)"
     }
 
-    func loadShortcuts() {
+    func loadShortcuts(forceRefresh: Bool = false) {
         guard applicationPID > 0, isAccessibilityGranted else { return }
-        isLoading = true
-        let pid = applicationPID
 
-        Task.detached(priority: .userInitiated) { [accessibilityService] in
-            let groups = accessibilityService.shortcuts(for: pid)
-            await MainActor.run {
-                self.groups = groups
-                self.isLoading = false
+        let pid = applicationPID
+        let cacheKey = applicationBundleIdentifier
+        let now = Date()
+
+        if let cached = shortcutCache[cacheKey] {
+            groups = cached.groups
+            isLoading = false
+            if !forceRefresh, now.timeIntervalSince(cached.loadedAt) < Self.cacheLifetime {
+                return
             }
+        } else {
+            isLoading = true
         }
+
+        loadTask?.cancel()
+        let service = accessibilityService
+
+        loadTask = Task { [weak self] in
+            let loadedGroups = await Task.detached(priority: .userInitiated) {
+                service.shortcuts(for: pid)
+            }.value
+
+            guard !Task.isCancelled,
+                  let self,
+                  self.applicationPID == pid,
+                  self.applicationBundleIdentifier == cacheKey else { return }
+
+            self.shortcutCache[cacheKey] = CacheEntry(groups: loadedGroups, loadedAt: Date())
+            self.groups = loadedGroups
+            self.isLoading = false
+        }
+    }
+
+    func requestSearchFocus() {
+        searchFocusRequest &+= 1
+    }
+
+    func closeOverlay() {
+        dismissOverlay?()
     }
 
     func loadPreviewData() {
@@ -105,7 +162,12 @@ final class AppState: ObservableObject {
                 ShortcutItem(title: "Close Tab", keys: ["⌘", "W"], path: "Tabs"),
                 ShortcutItem(title: "Reopen Last Closed Tab", keys: ["⇧", "⌘", "T"], path: "Tabs"),
                 ShortcutItem(title: "Next Tab", keys: ["⌃", "⇥"], path: "Tabs"),
-                ShortcutItem(title: "Previous Tab", keys: ["⌃", "⇧", "⇥"], path: "Tabs")
+                ShortcutItem(title: "Previous Tab", keys: ["⌃", "⇧", "⇥"], path: "Tabs"),
+                ShortcutItem(title: "Move Tab to New Window", keys: ["⌥", "⌘", "N"], path: "Tabs"),
+                ShortcutItem(title: "Pin Tab", keys: ["⌥", "⌘", "P"], path: "Tabs", isEnabled: false),
+                ShortcutItem(title: "Mute Tab", keys: ["⌥", "⌘", "M"], path: "Tabs"),
+                ShortcutItem(title: "Select First Tab", keys: ["⌘", "1"], path: "Tabs"),
+                ShortcutItem(title: "Select Last Tab", keys: ["⌘", "9"], path: "Tabs")
             ]),
             ShortcutGroup(title: "View", shortcuts: [
                 ShortcutItem(title: "Focus Address Bar", keys: ["⌘", "L"], path: "View"),
@@ -120,6 +182,16 @@ final class AppState: ObservableObject {
                 ShortcutItem(title: "Minimize", keys: ["⌘", "M"], path: "Window"),
                 ShortcutItem(title: "Enter Full Screen", keys: ["⌃", "⌘", "F"], path: "Window"),
                 ShortcutItem(title: "Show Reading List", keys: ["⌃", "⌘", "2"], path: "Window")
+            ]),
+            ShortcutGroup(title: "History", shortcuts: [
+                ShortcutItem(title: "Show All History", keys: ["⌘", "Y"], path: "History"),
+                ShortcutItem(title: "Back", keys: ["⌘", "["], path: "History"),
+                ShortcutItem(title: "Forward", keys: ["⌘", "]"], path: "History")
+            ]),
+            ShortcutGroup(title: "Bookmarks", shortcuts: [
+                ShortcutItem(title: "Add Bookmark", keys: ["⌘", "D"], path: "Bookmarks"),
+                ShortcutItem(title: "Show Start Page", keys: ["⇧", "⌘", "\\"], path: "Bookmarks"),
+                ShortcutItem(title: "Show Bookmarks", keys: ["⌃", "⌘", "1"], path: "Bookmarks")
             ])
         ]
     }
