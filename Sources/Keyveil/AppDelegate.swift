@@ -158,7 +158,9 @@ final class ShortcutPanelController {
         panel.contentView = hostingView
         panel.isOpaque = false
         panel.backgroundColor = .clear
-        panel.hasShadow = true
+        // A borderless transparent panel receives a rectangular AppKit shadow.
+        // It clashes with the rounded glass surface and can look like a black rim.
+        panel.hasShadow = false
         panel.level = .popUpMenu
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         panel.hidesOnDeactivate = false

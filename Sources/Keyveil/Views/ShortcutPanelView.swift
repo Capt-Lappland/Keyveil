@@ -5,15 +5,22 @@ struct ShortcutPanelView: View {
     @EnvironmentObject private var appState: AppState
 
     var body: some View {
-        Group {
-            if appState.isPermissionPromptVisible {
-                PermissionPromptView()
-            } else {
-                shortcutContent
+        ZStack {
+            // Keep the expensive optical material on a static layer. Applying
+            // glassEffect to the scrolling subtree forces it to re-composite
+            // continuously while the trackpad is moving.
+            LiquidGlassSurface(cornerRadius: 30)
+                .allowsHitTesting(false)
+
+            Group {
+                if appState.isPermissionPromptVisible {
+                    PermissionPromptView()
+                } else {
+                    shortcutContent
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .liquidGlassPanel(cornerRadius: 30)
         .padding(18)
     }
 
@@ -204,7 +211,6 @@ struct KeycapView: View {
                 RoundedRectangle(cornerRadius: compact ? 5 : 6, style: .continuous)
                     .stroke(.white.opacity(0.13), lineWidth: 0.7)
             }
-            .shadow(color: .black.opacity(0.14), radius: 2, y: 1)
     }
 }
 
@@ -245,11 +251,13 @@ private struct PermissionPromptView: View {
     }
 }
 
-private extension View {
+private struct LiquidGlassSurface: View {
+    let cornerRadius: CGFloat
+
     @ViewBuilder
-    func liquidGlassPanel(cornerRadius: CGFloat) -> some View {
+    var body: some View {
         if #available(macOS 26.0, *) {
-            self
+            Color.clear
                 .glassEffect(.regular, in: .rect(cornerRadius: cornerRadius))
                 .overlay {
                     RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
@@ -262,15 +270,13 @@ private extension View {
                             lineWidth: 0.8
                         )
                 }
-                .shadow(color: .black.opacity(0.42), radius: 34, y: 20)
         } else {
-            self
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(.ultraThinMaterial)
                 .overlay {
                     RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                         .stroke(.white.opacity(0.17), lineWidth: 0.8)
                 }
-                .shadow(color: .black.opacity(0.42), radius: 34, y: 20)
         }
     }
 }
