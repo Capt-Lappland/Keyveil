@@ -22,8 +22,9 @@ Keyveil is a lightweight macOS menu bar utility inspired by CheatSheet. Hold the
 ## Requirements
 
 - macOS 14 or later
-- Swift 6.2 or later to build from source
+- Xcode 26 or Swift 6.2 or later to build from source; full Xcode is required to run the XCTest suite
 - Accessibility permission, used only to read menu titles and shortcut metadata
+- Input Monitoring permission, used only to observe Command-key state
 
 Keyveil does not record keystrokes, window content, or typed text. The global event tap only observes modifier changes and cancels itself when another key is pressed.
 
@@ -33,7 +34,7 @@ Keyveil does not record keystrokes, window content, or typed text. The global ev
 - Release `Command`: close the temporary overlay
 - Double-tap `Command`: pin or unpin Keyveil
 - `Escape`: close a pinned overlay
-- Keep holding `Command` and use two-finger vertical scrolling over the panel to browse more shortcuts
+- Keep holding `Command` and use a trackpad or mouse wheel over the panel to browse more shortcuts
 
 ## Build
 
@@ -43,12 +44,16 @@ Build the executable with Swift Package Manager:
 swift build -c release
 ```
 
-Create a signed local `.app` bundle:
+Create an ad-hoc signed universal `.app` bundle and its canonical local zip artifact:
 
 ```bash
 ./scripts/package-app.sh release
-open dist/Keyveil.app
+open dist
 ```
+
+The script builds both Apple silicon and Intel slices, then verifies the extracted archive. It intentionally produces only `dist/Keyveil.zip`: synced `Documents` folders can attach Finder metadata to a raw app and invalidate its signature. Unzip it, move `Keyveil.app` to `/Applications`, and only then launch it and grant permissions.
+
+Local packages are ad-hoc signed by default. You can set `CODESIGN_IDENTITY` to a Developer ID Application identity to enable hardened-runtime signing, but a normal public download must also be notarized and stapled with your Apple Developer credentials.
 
 On first launch, Keyveil presents a non-floating setup window for its two required permissions. Choosing **Allow** dismisses Keyveil before macOS presents the authorization interface, so the setup window never covers System Settings.
 
@@ -71,6 +76,19 @@ Preview the first-launch permission UI without automatically requesting permissi
 
 ```bash
 swift run Keyveil --preview-permissions
+```
+
+Run the full unit, state, gesture, layout, and rendering suite:
+
+```bash
+swift test -Xswiftc -warnings-as-errors
+```
+
+Optionally export deterministic light, dark, compact, permission, and 960-shortcut stress snapshots:
+
+```bash
+mkdir -p /tmp/keyveil-snapshots
+KEYVEIL_SNAPSHOT_DIR=/tmp/keyveil-snapshots swift test --filter ShortcutPanelRenderingTests
 ```
 
 The original browser-based interaction study is preserved in [`DesignPrototype`](DesignPrototype/).

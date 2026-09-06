@@ -107,10 +107,13 @@ struct ShortcutPanelView: View {
 
     private var groups: some View {
         GeometryReader { proxy in
-            let columnCount = proxy.size.width >= 860 ? 3 : 2
-            let columns = balancedColumns(count: columnCount)
+            let columnCount = ShortcutColumnLayout.columnCount(
+                forWidth: proxy.size.width,
+                groupCount: appState.groups.count
+            )
+            let columns = ShortcutColumnLayout.balanced(appState.groups, columnCount: columnCount)
 
-            ScrollView(.vertical, showsIndicators: false) {
+            ScrollView(.vertical, showsIndicators: true) {
                 HStack(alignment: .top, spacing: 0) {
                     ForEach(columns.indices, id: \.self) { index in
                         LazyVStack(alignment: .leading, spacing: 24) {
@@ -128,21 +131,8 @@ struct ShortcutPanelView: View {
                 }
                 .padding(.vertical, 2)
             }
+            .id(appState.overlayPresentationRevision)
         }
-    }
-
-    private func balancedColumns(count: Int) -> [[ShortcutGroup]] {
-        let count = max(1, count)
-        var columns = Array(repeating: [ShortcutGroup](), count: count)
-        var weights = Array(repeating: 0, count: count)
-
-        for group in appState.groups {
-            let target = weights.indices.min(by: { weights[$0] < weights[$1] }) ?? 0
-            columns[target].append(group)
-            weights[target] += max(3, group.shortcuts.count) + 2
-        }
-
-        return columns
     }
 
     private var emptyState: some View {
@@ -166,19 +156,21 @@ struct ShortcutPanelView: View {
             Label("\(appState.shortcutCount) shortcuts", systemImage: "sparkles")
             Spacer()
             HStack(spacing: 6) {
+                Image(systemName: "arrow.up.arrow.down")
+                    .accessibilityHidden(true)
                 if appState.isPinned {
-                    Text("Scroll to browse · Press Esc or double-tap")
+                    Text("Scroll if needed · Press Esc or double-tap")
                     KeycapView(label: "⌘", compact: true)
                     Text("to close")
                 } else {
-                    Text("Two-finger scroll · Release")
+                    Text("Scroll if needed · Release")
                     KeycapView(label: "⌘", compact: true)
                     Text("to close")
                 }
             }
         }
-        .font(.system(size: 11.5, weight: .medium))
-        .foregroundStyle(.tertiary)
+        .font(.system(size: 12, weight: .medium))
+        .foregroundStyle(.secondary)
         .padding(.top, 12)
     }
 }
@@ -192,23 +184,35 @@ private struct ShortcutGroupView: View {
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(.cyan.opacity(0.86))
                 .padding(.bottom, 10)
+                .accessibilityAddTraits(.isHeader)
 
             LazyVStack(spacing: 0) {
                 ForEach(group.shortcuts) { shortcut in
                     HStack(spacing: 12) {
                         Text(shortcut.title)
                             .font(.system(size: 15))
-                            .lineLimit(1)
-                            .truncationMode(.tail)
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.9)
+                            .truncationMode(.middle)
+                            .foregroundStyle(shortcut.isEnabled ? Color.primary : Color.secondary)
                         Spacer(minLength: 8)
                         HStack(spacing: 4) {
                             ForEach(Array(shortcut.keys.enumerated()), id: \.offset) { _, key in
                                 KeycapView(label: key)
                             }
                         }
+                        .fixedSize(horizontal: true, vertical: false)
+                        .layoutPriority(1)
+                        .opacity(shortcut.isEnabled ? 1 : 0.68)
                     }
-                    .frame(height: 43)
-                    .opacity(shortcut.isEnabled ? 1 : 0.42)
+                    .frame(minHeight: 43)
+                    .help(shortcut.title + (shortcut.isEnabled ? "" : " (Unavailable)"))
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(shortcut.title)
+                    .accessibilityValue(
+                        shortcut.keys.joined(separator: " ")
+                            + (shortcut.isEnabled ? "" : ", unavailable")
+                    )
 
                     if shortcut.id != group.shortcuts.last?.id {
                         Divider().opacity(0.24)
@@ -226,11 +230,13 @@ struct KeycapView: View {
     var body: some View {
         Text(label)
             .font(.system(size: compact ? 11 : 12, weight: .semibold, design: .rounded))
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: true)
             .frame(minWidth: compact ? 22 : 26, minHeight: compact ? 22 : 26)
             .padding(.horizontal, compact ? 4 : 3)
             .background(
                 LinearGradient(
-                    colors: [.white.opacity(0.13), .white.opacity(0.07)],
+                    colors: [.primary.opacity(0.12), .primary.opacity(0.06)],
                     startPoint: .top,
                     endPoint: .bottom
                 ),
@@ -238,7 +244,7 @@ struct KeycapView: View {
             )
             .overlay {
                 RoundedRectangle(cornerRadius: compact ? 6 : 7, style: .continuous)
-                    .stroke(.white.opacity(0.13), lineWidth: 0.7)
+                    .stroke(.primary.opacity(0.15), lineWidth: 0.7)
             }
     }
 }
@@ -288,8 +294,8 @@ private struct PermissionPromptView: View {
                 appState.closeOverlay()
             }
             .buttonStyle(.plain)
-            .font(.system(size: 11))
-            .foregroundStyle(.secondary)
+            .font(.system(size: 12, weight: .medium))
+            .foregroundStyle(.primary.opacity(0.65))
         }
         .padding(54)
     }
@@ -324,17 +330,23 @@ private struct PermissionStatusRow: View {
                     .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(.green)
             } else {
-                Button("Allow", action: action)
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
+                Button(action: action) {
+                    Text("Allow")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 13)
+                        .padding(.vertical, 6)
+                        .background(.cyan.gradient, in: Capsule())
+                }
+                .buttonStyle(.plain)
             }
         }
         .padding(.horizontal, 14)
         .frame(height: 54)
-        .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(.primary.opacity(0.055), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(.white.opacity(0.08), lineWidth: 0.7)
+                .stroke(.primary.opacity(0.10), lineWidth: 0.7)
         }
     }
 }

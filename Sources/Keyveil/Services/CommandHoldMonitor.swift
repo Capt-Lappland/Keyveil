@@ -1,10 +1,92 @@
 import AppKit
 import CoreGraphics
 
-enum CommandHoldEvent: Sendable {
+enum CommandHoldEvent: Equatable, Sendable {
     case holdBegan
     case released
     case togglePin
+}
+
+enum CommandGestureAction: Equatable, Sendable {
+    case scheduleHold
+    case cancelHold
+    case emit(CommandHoldEvent)
+}
+
+struct CommandGestureState: Sendable {
+    private(set) var commandIsDown = false
+    private(set) var shortcutWasPressed = false
+    private var pressBeganAt: TimeInterval = 0
+    private var lastTapReleasedAt: TimeInterval?
+    private(set) var isSecondTapCandidate = false
+    private var holdWasEmitted = false
+
+    let doubleTapInterval: TimeInterval
+
+    init(doubleTapInterval: TimeInterval = 0.32) {
+        self.doubleTapInterval = doubleTapInterval
+    }
+
+    mutating func commandFlagsChanged(isDown: Bool, at eventTime: TimeInterval) -> [CommandGestureAction] {
+        if isDown, !commandIsDown {
+            commandIsDown = true
+            shortcutWasPressed = false
+            pressBeganAt = eventTime
+            holdWasEmitted = false
+
+            if let lastTapReleasedAt,
+               eventTime - lastTapReleasedAt <= doubleTapInterval {
+                self.lastTapReleasedAt = nil
+                isSecondTapCandidate = true
+                return [.scheduleHold]
+            }
+
+            isSecondTapCandidate = false
+            return [.scheduleHold]
+        }
+
+        if !isDown, commandIsDown {
+            commandIsDown = false
+
+            if isSecondTapCandidate,
+               !shortcutWasPressed,
+               eventTime - pressBeganAt <= doubleTapInterval {
+                isSecondTapCandidate = false
+                lastTapReleasedAt = nil
+                return [.cancelHold, .emit(.togglePin)]
+            }
+
+            let wasQuickTap = !shortcutWasPressed
+                && !isSecondTapCandidate
+                && !holdWasEmitted
+                && eventTime - pressBeganAt <= doubleTapInterval
+            lastTapReleasedAt = wasQuickTap ? eventTime : nil
+            isSecondTapCandidate = false
+            return [.cancelHold, .emit(.released)]
+        }
+
+        return []
+    }
+
+    mutating func keyPressed() -> [CommandGestureAction] {
+        guard commandIsDown, !shortcutWasPressed else { return [] }
+        shortcutWasPressed = true
+        lastTapReleasedAt = nil
+        isSecondTapCandidate = false
+        return [.cancelHold, .emit(.released)]
+    }
+
+    mutating func holdDelayElapsed() -> CommandHoldEvent? {
+        guard commandIsDown, !shortcutWasPressed else { return nil }
+        isSecondTapCandidate = false
+        lastTapReleasedAt = nil
+        holdWasEmitted = true
+        return .holdBegan
+    }
+
+    mutating func reset() {
+        self = CommandGestureState(doubleTapInterval: doubleTapInterval)
+    }
 }
 
 final class CommandHoldMonitor: @unchecked Sendable {
@@ -14,21 +96,16 @@ final class CommandHoldMonitor: @unchecked Sendable {
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     private var workItem: DispatchWorkItem?
-    private var commandIsDown = false
-    private var shortcutWasPressed = false
-    private var pressBeganAt: TimeInterval = 0
-    private var lastTapReleasedAt: TimeInterval?
-    private var toggledPinOnCurrentPress = false
-
-    private let doubleTapInterval: TimeInterval = 0.32
+    private var gestureState = CommandGestureState()
 
     init(delay: TimeInterval, callback: @escaping (CommandHoldEvent) -> Void) {
         self.delay = delay
         self.callback = callback
     }
 
-    func start() {
-        guard eventTap == nil else { return }
+    @discardableResult
+    func start() -> Bool {
+        guard eventTap == nil else { return true }
 
         let eventMask = (1 << CGEventType.flagsChanged.rawValue) | (1 << CGEventType.keyDown.rawValue)
         let pointer = Unmanaged.passUnretained(self).toOpaque()
@@ -46,7 +123,7 @@ final class CommandHoldMonitor: @unchecked Sendable {
             },
             userInfo: pointer
         ) else {
-            return
+            return false
         }
 
         eventTap = tap
@@ -54,6 +131,7 @@ final class CommandHoldMonitor: @unchecked Sendable {
         runLoopSource = source
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
         CGEvent.tapEnable(tap: tap, enable: true)
+        return true
     }
 
     func updateDelay(_ newDelay: TimeInterval) {
@@ -79,57 +157,56 @@ final class CommandHoldMonitor: @unchecked Sendable {
 
     private func handle(type: CGEventType, event: CGEvent) {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-            if let eventTap {
+            stateQueue.async { [weak self] in
+                guard let self else { return }
+                self.workItem?.cancel()
+                self.workItem = nil
+                self.gestureState.reset()
+                DispatchQueue.main.async { self.callback(.released) }
+            }
+
+            if let eventTap, CFMachPortIsValid(eventTap) {
                 CGEvent.tapEnable(tap: eventTap, enable: true)
+            } else {
+                DispatchQueue.main.async { [weak self] in
+                    self?.stop()
+                    self?.start()
+                }
             }
             return
         }
 
         let commandFlagIsSet = event.flags.contains(.maskCommand)
-        let eventTime = ProcessInfo.processInfo.systemUptime
+        if type == .keyDown, !commandFlagIsSet {
+            return
+        }
+        let eventTime = event.timestamp == 0
+            ? ProcessInfo.processInfo.systemUptime
+            : TimeInterval(event.timestamp) / 1_000_000_000
 
         stateQueue.async { [weak self] in
             guard let self else { return }
 
-            if type == .keyDown, self.commandIsDown {
-                self.shortcutWasPressed = true
-                self.lastTapReleasedAt = nil
-                self.workItem?.cancel()
-                self.workItem = nil
-                DispatchQueue.main.async { self.callback(.released) }
+            if type == .keyDown {
+                self.apply(self.gestureState.keyPressed())
                 return
             }
 
             guard type == .flagsChanged else { return }
-            let isDown = commandFlagIsSet
+            self.apply(self.gestureState.commandFlagsChanged(isDown: commandFlagIsSet, at: eventTime))
+        }
+    }
 
-            if isDown, !self.commandIsDown {
-                self.commandIsDown = true
-                self.shortcutWasPressed = false
-                self.pressBeganAt = eventTime
-
-                if let lastTap = self.lastTapReleasedAt,
-                   eventTime - lastTap <= self.doubleTapInterval {
-                    self.lastTapReleasedAt = nil
-                    self.toggledPinOnCurrentPress = true
-                    self.workItem?.cancel()
-                    self.workItem = nil
-                    DispatchQueue.main.async { self.callback(.togglePin) }
-                } else {
-                    self.toggledPinOnCurrentPress = false
-                    self.scheduleShow()
-                }
-            } else if !isDown, self.commandIsDown {
-                self.commandIsDown = false
+    private func apply(_ actions: [CommandGestureAction]) {
+        for action in actions {
+            switch action {
+            case .scheduleHold:
+                scheduleShow()
+            case .cancelHold:
                 self.workItem?.cancel()
                 self.workItem = nil
-
-                let wasQuickTap = !self.shortcutWasPressed
-                    && !self.toggledPinOnCurrentPress
-                    && eventTime - self.pressBeganAt <= self.doubleTapInterval
-                self.lastTapReleasedAt = wasQuickTap ? eventTime : nil
-                self.toggledPinOnCurrentPress = false
-                DispatchQueue.main.async { self.callback(.released) }
+            case let .emit(event):
+                DispatchQueue.main.async { self.callback(event) }
             }
         }
     }
@@ -137,10 +214,16 @@ final class CommandHoldMonitor: @unchecked Sendable {
     private func scheduleShow() {
         workItem?.cancel()
         let item = DispatchWorkItem { [weak self] in
-            guard let self, self.commandIsDown, !self.shortcutWasPressed else { return }
-            DispatchQueue.main.async { self.callback(.holdBegan) }
+            guard let self, let event = self.gestureState.holdDelayElapsed() else { return }
+            DispatchQueue.main.async { self.callback(event) }
         }
         workItem = item
-        stateQueue.asyncAfter(deadline: .now() + delay, execute: item)
+        // Give the second tap a small release window before treating it as a hold.
+        // Dispatch timers may fire a little early under load, so scheduling exactly
+        // on the double-tap boundary can otherwise make pinning feel unreliable.
+        let scheduledDelay = gestureState.isSecondTapCandidate
+            ? max(delay, gestureState.doubleTapInterval + 0.04)
+            : delay
+        stateQueue.asyncAfter(deadline: .now() + scheduledDelay, execute: item)
     }
 }

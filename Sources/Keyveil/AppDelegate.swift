@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var commandMonitor: CommandHoldMonitor?
     private var statusItem: NSStatusItem?
     private var workspaceObserver: NSObjectProtocol?
+    private var permissionPollTimer: Timer?
     private var cancellables = Set<AnyCancellable>()
     private let isPreviewMode = CommandLine.arguments.contains("--preview")
     private let isPermissionPreviewMode = CommandLine.arguments.contains("--preview-permissions")
@@ -19,7 +20,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         panelController = ShortcutPanelController(appState: appState)
         configureStatusItem()
-        startCommandMonitor()
+        if !isPreviewMode, !isPermissionPreviewMode {
+            startCommandMonitor()
+        }
 
         if isPermissionPreviewMode {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
@@ -44,6 +47,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         commandMonitor?.stop()
+        permissionPollTimer?.invalidate()
         if let workspaceObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(workspaceObserver)
         }
@@ -52,8 +56,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidBecomeActive(_ notification: Notification) {
         appState.refreshPermissionStatus()
         if appState.hasRequiredPermissions {
-            commandMonitor?.start()
+            if commandMonitor?.start() == true {
+                stopPermissionPolling()
+            } else {
+                startPermissionPolling()
+            }
         } else if !isPreviewMode, !isPermissionPreviewMode, !appState.isPermissionPromptVisible {
+            startPermissionPolling()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
                 guard let self, !self.appState.hasRequiredPermissions else { return }
                 self.panelController?.showPermissionPrompt()
@@ -90,7 +99,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 guard let self else { return }
                 self.appState.refreshPermissionStatus()
                 if self.appState.hasRequiredPermissions {
-                    self.commandMonitor?.start()
+                    if self.commandMonitor?.start() == true {
+                        self.stopPermissionPolling()
+                    }
+                } else {
+                    self.startPermissionPolling()
                 }
                 self.refreshCurrentApplication()
                 if self.panelController?.isPinned == true {
@@ -110,7 +123,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         self.presentForCurrentApplication(pinned: false)
                     }
                 case .released:
-                    self.panelController?.hide()
+                    if !self.appState.isPermissionPromptVisible {
+                        self.panelController?.hide()
+                    }
                 case .togglePin:
                     if self.panelController?.isPinned == true {
                         self.panelController?.hide(force: true)
@@ -120,8 +135,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         }
-        monitor.start()
         commandMonitor = monitor
+        if !monitor.start() || !appState.hasRequiredPermissions {
+            startPermissionPolling()
+        }
 
         appState.$holdDelay
             .dropFirst()
@@ -129,6 +146,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.commandMonitor?.updateDelay(delay)
             }
             .store(in: &cancellables)
+    }
+
+    private func startPermissionPolling() {
+        guard !isPreviewMode, !isPermissionPreviewMode, permissionPollTimer == nil else { return }
+
+        permissionPollTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                self.appState.refreshPermissionStatus()
+                let monitorStarted = self.commandMonitor?.start() == true
+                if self.appState.hasRequiredPermissions, monitorStarted {
+                    self.stopPermissionPolling()
+                }
+            }
+        }
+    }
+
+    private func stopPermissionPolling() {
+        permissionPollTimer?.invalidate()
+        permissionPollTimer = nil
     }
 
     private func refreshCurrentApplication() {
@@ -182,6 +219,7 @@ final class ShortcutPanelController {
     private let appState: AppState
     private let hostingView: NSHostingView<AnyView>
     private var transitionGeneration = 0
+    private var previouslyActiveApplication: NSRunningApplication?
 
     var isPinned: Bool { appState.isPinned }
 
@@ -209,29 +247,48 @@ final class ShortcutPanelController {
         appState.dismissOverlay = { [weak self] in
             self?.hide(force: true)
         }
+        panel.onEscape = { [weak self] in
+            self?.hide(force: true)
+        }
     }
 
     func show(pinned: Bool) {
         transitionGeneration &+= 1
+        let generation = transitionGeneration
         panel.level = .popUpMenu
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         panel.hidesOnDeactivate = false
         centerOnActiveScreen(preferredSize: NSSize(width: 1180, height: 720))
         appState.isPermissionPromptVisible = false
         appState.isPinned = pinned
+        appState.beginShortcutPresentation()
         panel.alphaValue = 0
 
         if pinned {
+            let frontmostApplication = NSWorkspace.shared.frontmostApplication
+            if frontmostApplication?.processIdentifier != ProcessInfo.processInfo.processIdentifier {
+                previouslyActiveApplication = frontmostApplication
+            }
             panel.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
         } else {
             panel.orderFrontRegardless()
         }
 
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.18
+        let animationDuration = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0 : 0.18
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = animationDuration
             context.timingFunction = CAMediaTimingFunction(name: .easeOut)
             panel.animator().alphaValue = 1
+        }, completionHandler: { [weak self] in
+            DispatchQueue.main.async {
+                guard let self, self.transitionGeneration == generation else { return }
+                self.panel.alphaValue = 1
+            }
+        })
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.24) { [weak self] in
+            guard let self, self.transitionGeneration == generation, self.panel.isVisible else { return }
+            self.panel.alphaValue = 1
         }
     }
 
@@ -254,18 +311,40 @@ final class ShortcutPanelController {
 
         transitionGeneration &+= 1
         let generation = transitionGeneration
+        let applicationToRestore = appState.isPinned ? previouslyActiveApplication : nil
+        previouslyActiveApplication = nil
         appState.isPinned = false
 
+        let animationDuration = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0 : 0.12
         NSAnimationContext.runAnimationGroup({ context in
-            context.duration = 0.12
+            context.duration = animationDuration
             panel.animator().alphaValue = 0
         }, completionHandler: { [weak self] in
             DispatchQueue.main.async {
-                guard let self, self.transitionGeneration == generation else { return }
-                self.panel.orderOut(nil)
+                self?.completeHide(generation: generation, restoring: applicationToRestore)
             }
         })
+        // AppKit has occasionally failed to invoke animation completions for a
+        // nonactivating panel. Keep dismissal deterministic in that case.
+        DispatchQueue.main.asyncAfter(deadline: .now() + max(animationDuration + 0.06, 0.06)) { [weak self] in
+            self?.completeHide(generation: generation, restoring: applicationToRestore)
+        }
         appState.isPermissionPromptVisible = false
+    }
+
+    private func completeHide(generation: Int, restoring application: NSRunningApplication?) {
+        guard transitionGeneration == generation, panel.isVisible else { return }
+        panel.orderOut(nil)
+
+        let currentPID = ProcessInfo.processInfo.processIdentifier
+        let keyveilIsFrontmost = NSWorkspace.shared.frontmostApplication?.processIdentifier == currentPID
+        if let application,
+           !application.isTerminated,
+           NSApp.isActive || keyveilIsFrontmost {
+            let currentApplication = NSRunningApplication.current
+            NSApp.yieldActivation(to: application)
+            application.activate(from: currentApplication, options: [])
+        }
     }
 
     private func centerOnActiveScreen(preferredSize: NSSize) {
@@ -284,6 +363,16 @@ final class ShortcutPanelController {
 }
 
 final class OverlayPanel: NSPanel {
+    var onEscape: (() -> Void)?
+
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
+
+    override func sendEvent(_ event: NSEvent) {
+        if event.type == .keyDown, event.keyCode == 53 {
+            onEscape?()
+            return
+        }
+        super.sendEvent(event)
+    }
 }

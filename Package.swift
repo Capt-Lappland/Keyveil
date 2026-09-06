@@ -14,6 +14,11 @@ let package = Package(
         .executableTarget(
             name: "Keyveil",
             path: "Sources/Keyveil"
+        ),
+        .testTarget(
+            name: "KeyveilTests",
+            dependencies: ["Keyveil"],
+            path: "Tests/KeyveilTests"
         )
     ]
 )

@@ -43,6 +43,52 @@ struct ShortcutGroup: Identifiable, Hashable, Sendable {
     }
 }
 
+enum ShortcutColumnLayout {
+    static func columnCount(forWidth width: CGFloat, groupCount: Int) -> Int {
+        guard groupCount > 0 else { return 0 }
+        let preferredCount = width >= 1_000 ? 3 : 2
+        return min(preferredCount, groupCount)
+    }
+
+    static func balanced(_ groups: [ShortcutGroup], columnCount: Int) -> [[ShortcutGroup]] {
+        let count = min(max(1, columnCount), max(1, groups.count))
+        guard !groups.isEmpty else { return [] }
+
+        let groupWeights = groups.map { max(3, $0.shortcuts.count) + 2 }
+        var remainingWeight = groupWeights.reduce(0, +)
+        var remainingColumns = count
+        var columns: [[ShortcutGroup]] = []
+        var currentColumn: [ShortcutGroup] = []
+        var currentWeight = 0
+
+        for (index, group) in groups.enumerated() {
+            let weight = groupWeights[index]
+            if !currentColumn.isEmpty, remainingColumns > 1 {
+                let targetWeight = Double(remainingWeight) / Double(remainingColumns)
+                let groupsStillUnplaced = groups.count - index
+                let mustStartNextColumn = groupsStillUnplaced == remainingColumns - 1
+                let currentDistance = abs(Double(currentWeight) - targetWeight)
+                let addedDistance = abs(Double(currentWeight + weight) - targetWeight)
+
+                if mustStartNextColumn || currentDistance <= addedDistance {
+                    columns.append(currentColumn)
+                    remainingWeight -= currentWeight
+                    remainingColumns -= 1
+                    currentColumn = []
+                    currentWeight = 0
+                }
+            }
+
+            currentColumn.append(group)
+            currentWeight += weight
+        }
+
+        columns.append(currentColumn)
+
+        return columns
+    }
+}
+
 @MainActor
 final class AppState: ObservableObject {
     @Published var applicationName = "Current App"
@@ -53,6 +99,7 @@ final class AppState: ObservableObject {
     @Published var isPermissionPromptVisible = false
     @Published private(set) var permissionRevision = 0
     @Published var isPinned = false
+    @Published private(set) var overlayPresentationRevision = 0
     @Published var holdDelay: TimeInterval {
         didSet {
             UserDefaults.standard.set(holdDelay, forKey: Self.holdDelayKey)
@@ -61,30 +108,40 @@ final class AppState: ObservableObject {
 
     var dismissOverlay: (() -> Void)?
 
-    private let accessibilityService = AccessibilityShortcutService()
-    private var loadTask: Task<Void, Never>?
+    private let shortcutProvider: any ShortcutProviding
+    private let accessibilityCheck: () -> Bool
+    private let inputMonitoringCheck: () -> Bool
+    private var loadTask: Task<[ShortcutGroup]?, Never>?
     private var applicationBundleIdentifier = ""
     private var shortcutCache: [String: CacheEntry] = [:]
 
     private static let holdDelayKey = "commandHoldDelay"
     private static let cacheLifetime: TimeInterval = 120
+    private static let maximumCachedApplications = 24
 
     private struct CacheEntry {
         let groups: [ShortcutGroup]
         let loadedAt: Date
     }
 
-    init() {
+    init(
+        shortcutProvider: any ShortcutProviding = AccessibilityShortcutService(),
+        accessibilityCheck: @escaping () -> Bool = { AXIsProcessTrusted() },
+        inputMonitoringCheck: @escaping () -> Bool = { CGPreflightListenEventAccess() }
+    ) {
+        self.shortcutProvider = shortcutProvider
+        self.accessibilityCheck = accessibilityCheck
+        self.inputMonitoringCheck = inputMonitoringCheck
         let savedDelay = UserDefaults.standard.double(forKey: Self.holdDelayKey)
         holdDelay = savedDelay == 0 ? 0.55 : min(max(savedDelay, 0.3), 1.2)
     }
 
     var isAccessibilityGranted: Bool {
-        AXIsProcessTrusted()
+        accessibilityCheck()
     }
 
     var isInputMonitoringGranted: Bool {
-        CGPreflightListenEventAccess()
+        inputMonitoringCheck()
     }
 
     var hasRequiredPermissions: Bool {
@@ -96,10 +153,19 @@ final class AppState: ObservableObject {
     }
 
     func updateApplication(_ application: NSRunningApplication) {
-        applicationName = application.localizedName ?? "Current App"
-        applicationIcon = application.icon
-        applicationPID = application.processIdentifier
-        applicationBundleIdentifier = application.bundleIdentifier ?? "pid:\(application.processIdentifier)"
+        updateApplication(
+            name: application.localizedName ?? "Current App",
+            icon: application.icon,
+            processID: application.processIdentifier,
+            bundleIdentifier: application.bundleIdentifier ?? "pid:\(application.processIdentifier)"
+        )
+    }
+
+    func updateApplication(name: String, icon: NSImage?, processID: pid_t, bundleIdentifier: String) {
+        applicationName = name
+        applicationIcon = icon
+        applicationPID = processID
+        applicationBundleIdentifier = bundleIdentifier
     }
 
     func loadShortcuts(forceRefresh: Bool = false) {
@@ -108,6 +174,8 @@ final class AppState: ObservableObject {
         let pid = applicationPID
         let cacheKey = applicationBundleIdentifier
         let now = Date()
+        loadTask?.cancel()
+        loadTask = nil
 
         if let cached = shortcutCache[cacheKey] {
             groups = cached.groups
@@ -116,30 +184,59 @@ final class AppState: ObservableObject {
                 return
             }
         } else {
+            // Never render the previous app's shortcuts beneath a new header.
+            groups = []
             isLoading = true
         }
 
-        loadTask?.cancel()
-        let service = accessibilityService
+        let provider = shortcutProvider
+        let scanTask = Task.detached(priority: .userInitiated) {
+            provider.shortcuts(for: pid)
+        }
+        loadTask = scanTask
 
-        loadTask = Task { [weak self] in
-            let loadedGroups = await Task.detached(priority: .userInitiated) {
-                service.shortcuts(for: pid)
-            }.value
+        Task { [weak self] in
+            let loadedGroups = await scanTask.value
 
-            guard !Task.isCancelled,
+            guard !scanTask.isCancelled,
                   let self,
                   self.applicationPID == pid,
                   self.applicationBundleIdentifier == cacheKey else { return }
 
-            self.shortcutCache[cacheKey] = CacheEntry(groups: loadedGroups, loadedAt: Date())
+            self.loadTask = nil
+            guard let loadedGroups else {
+                // A transient AX failure should be retried on the next reveal,
+                // rather than cached as an empty result for two minutes.
+                self.isLoading = false
+                return
+            }
+
+            self.storeInCache(loadedGroups, for: cacheKey, at: Date())
             self.groups = loadedGroups
             self.isLoading = false
         }
     }
 
+    private func storeInCache(_ groups: [ShortcutGroup], for key: String, at date: Date) {
+        shortcutCache = shortcutCache.filter {
+            date.timeIntervalSince($0.value.loadedAt) < Self.cacheLifetime
+        }
+
+        if shortcutCache[key] == nil,
+           shortcutCache.count >= Self.maximumCachedApplications,
+           let oldestKey = shortcutCache.min(by: { $0.value.loadedAt < $1.value.loadedAt })?.key {
+            shortcutCache.removeValue(forKey: oldestKey)
+        }
+
+        shortcutCache[key] = CacheEntry(groups: groups, loadedAt: date)
+    }
+
     func closeOverlay() {
         dismissOverlay?()
+    }
+
+    func beginShortcutPresentation() {
+        overlayPresentationRevision &+= 1
     }
 
     func loadPreviewData() {
