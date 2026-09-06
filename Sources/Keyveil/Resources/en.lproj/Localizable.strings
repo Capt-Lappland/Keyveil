@@ -1,0 +1,65 @@
+"app.current" = "Current App";
+
+"menu.about" = "About Keyveil";
+"menu.show" = "Show Keyveil";
+"menu.refresh" = "Refresh Shortcuts";
+"menu.open_accessibility" = "Open Accessibility Settings…";
+"menu.open_input_monitoring" = "Open Input Monitoring Settings…";
+"menu.settings" = "Settings…";
+"menu.quit" = "Quit Keyveil";
+
+"panel.loading" = "Reading shortcuts…";
+"panel.current_app" = "CURRENT APP";
+"panel.pinned" = "Pinned";
+"panel.hold" = "Hold";
+"panel.close" = "Close Keyveil";
+"panel.empty.title" = "No shortcuts found";
+"panel.empty.description" = "Try refreshing after granting Accessibility access.";
+"panel.footer.pinned_before_key" = "Scroll if needed · Press Esc or double-tap";
+"panel.footer.held_before_key" = "Scroll if needed · Release";
+"panel.footer.close_after_key" = "to close";
+"panel.shortcut.unavailable_suffix" = " (Unavailable)";
+"panel.shortcut.unavailable_accessibility_suffix" = ", unavailable";
+
+"permission.accessibility.title" = "Accessibility";
+"permission.accessibility.description" = "Reads shortcut titles and key equivalents from the active app’s menu.";
+"permission.input_monitoring.title" = "Input Monitoring";
+"permission.input_monitoring.description" = "Observes Command-key state without recording the keys you type.";
+
+"onboarding.title" = "Finish setting up Keyveil";
+"onboarding.description" = "Two macOS permissions are required. Choose one below; Keyveil will close before the system authorization appears.";
+"onboarding.not_now" = "Not Now";
+"onboarding.granted" = "Granted";
+"onboarding.allow" = "Allow";
+
+"settings.tab.general" = "General";
+"settings.tab.permissions" = "Permissions";
+"settings.command_gesture.title" = "Command gesture";
+"settings.command_gesture.description" = "Choose how long to hold Command before Keyveil reveals the active app’s shortcuts.";
+"settings.activation.section" = "Activation";
+"settings.activation.accessibility_label" = "Command hold duration";
+"settings.activation.accessibility_value" = "%@ seconds";
+"settings.activation.short_value" = "%@ s";
+"settings.activation.hold_duration" = "Hold duration:";
+"settings.activation.description" = "A shorter duration feels faster; a longer duration reduces accidental activation.";
+"settings.startup.section" = "Startup";
+"settings.startup.toggle" = "Launch Keyveil at login";
+"settings.startup.description" = "Starts quietly in the menu bar after you sign in.";
+"settings.startup.enabled" = "Keyveil will open automatically at login.";
+"settings.startup.requires_approval" = "Approval is required in System Settings.";
+"settings.startup.review" = "Review…";
+"settings.startup.unavailable" = "Login item registration isn’t available for this copy of Keyveil.";
+"settings.startup.error" = "Couldn’t update the login item: %@";
+"settings.quick_access.section" = "Quick access";
+"settings.quick_access.double_tap.title" = "Double-tap Command";
+"settings.quick_access.double_tap.description" = "Pin or unpin the shortcut panel without keeping Command held down.";
+"settings.quick_access.escape.title" = "Press Escape";
+"settings.quick_access.escape.description" = "Close the panel whenever it is pinned.";
+"settings.privacy.title" = "Privacy & Security";
+"settings.privacy.description" = "Keyveil needs two macOS permissions to read menu shortcuts and detect the Command key.";
+"settings.permissions.required" = "Required permissions";
+"settings.permissions.control_note" = "Permission changes remain under your control in System Settings.";
+"settings.permissions.allowed" = "Allowed";
+"settings.permissions.required_status" = "Required";
+"settings.permissions.manage" = "Manage…";
+"settings.permissions.open_settings" = "Open Settings…";

@@ -1,0 +1,65 @@
+"app.current" = "当前应用";
+
+"menu.about" = "关于 Keyveil";
+"menu.show" = "显示 Keyveil";
+"menu.refresh" = "刷新快捷键";
+"menu.open_accessibility" = "打开辅助功能设置…";
+"menu.open_input_monitoring" = "打开输入监控设置…";
+"menu.settings" = "设置…";
+"menu.quit" = "退出 Keyveil";
+
+"panel.loading" = "正在读取快捷键…";
+"panel.current_app" = "当前应用";
+"panel.pinned" = "已固定";
+"panel.hold" = "长按";
+"panel.close" = "关闭 Keyveil";
+"panel.empty.title" = "未找到快捷键";
+"panel.empty.description" = "授予辅助功能权限后，请尝试刷新。";
+"panel.footer.pinned_before_key" = "必要时滚动 · 按 Esc 或连按两次";
+"panel.footer.held_before_key" = "必要时滚动 · 松开";
+"panel.footer.close_after_key" = "即可关闭";
+"panel.shortcut.unavailable_suffix" = "（不可用）";
+"panel.shortcut.unavailable_accessibility_suffix" = "，不可用";
+
+"permission.accessibility.title" = "辅助功能";
+"permission.accessibility.description" = "读取当前应用菜单中的快捷键名称和按键组合。";
+"permission.input_monitoring.title" = "输入监控";
+"permission.input_monitoring.description" = "仅检测 Command 键状态，不记录你输入的按键。";
+
+"onboarding.title" = "完成 Keyveil 设置";
+"onboarding.description" = "Keyveil 需要两项 macOS 权限。请选择下方的一项；系统授权界面出现前，Keyveil 会先收起。";
+"onboarding.not_now" = "暂不设置";
+"onboarding.granted" = "已允许";
+"onboarding.allow" = "允许";
+
+"settings.tab.general" = "通用";
+"settings.tab.permissions" = "权限";
+"settings.command_gesture.title" = "Command 手势";
+"settings.command_gesture.description" = "设置长按 Command 多久后显示当前应用的快捷键。";
+"settings.activation.section" = "触发";
+"settings.activation.accessibility_label" = "Command 长按时长";
+"settings.activation.accessibility_value" = "%@ 秒";
+"settings.activation.short_value" = "%@ 秒";
+"settings.activation.hold_duration" = "长按时长：";
+"settings.activation.description" = "时间越短，响应越快；时间越长，越不容易误触。";
+"settings.startup.section" = "启动";
+"settings.startup.toggle" = "登录时启动 Keyveil";
+"settings.startup.description" = "登录后在菜单栏中静默启动。";
+"settings.startup.enabled" = "Keyveil 将在登录时自动打开。";
+"settings.startup.requires_approval" = "需要在“系统设置”中批准。";
+"settings.startup.review" = "前往查看…";
+"settings.startup.unavailable" = "此 Keyveil 副本无法注册为登录项。";
+"settings.startup.error" = "无法更新登录项：%@";
+"settings.quick_access.section" = "快速操作";
+"settings.quick_access.double_tap.title" = "连按两次 Command";
+"settings.quick_access.double_tap.description" = "无需持续按住 Command，即可固定或取消固定快捷键面板。";
+"settings.quick_access.escape.title" = "按下 Escape";
+"settings.quick_access.escape.description" = "面板固定时，随时按 Escape 将其关闭。";
+"settings.privacy.title" = "隐私与安全性";
+"settings.privacy.description" = "Keyveil 需要两项 macOS 权限，才能读取菜单快捷键并检测 Command 键。";
+"settings.permissions.required" = "所需权限";
+"settings.permissions.control_note" = "权限始终由你在“系统设置”中管理。";
+"settings.permissions.allowed" = "已允许";
+"settings.permissions.required_status" = "需要授权";
+"settings.permissions.manage" = "管理…";
+"settings.permissions.open_settings" = "打开设置…";

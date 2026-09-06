@@ -29,9 +29,11 @@ if [[ "$CONFIGURATION" == "release" ]]; then
     DEVELOPER_DIR="$KEYVEIL_DEVELOPER_DIR" "$SWIFT_BIN" build -c release --arch x86_64
     ARM64_BIN_DIR="$(DEVELOPER_DIR="$KEYVEIL_DEVELOPER_DIR" "$SWIFT_BIN" build -c release --arch arm64 --show-bin-path)"
     X86_64_BIN_DIR="$(DEVELOPER_DIR="$KEYVEIL_DEVELOPER_DIR" "$SWIFT_BIN" build -c release --arch x86_64 --show-bin-path)"
+    RESOURCE_BUNDLE_DIR="$ARM64_BIN_DIR/Keyveil_Keyveil.bundle"
 else
     DEVELOPER_DIR="$KEYVEIL_DEVELOPER_DIR" "$SWIFT_BIN" build -c "$CONFIGURATION"
     BUILD_BIN_DIR="$(DEVELOPER_DIR="$KEYVEIL_DEVELOPER_DIR" "$SWIFT_BIN" build -c "$CONFIGURATION" --show-bin-path)"
+    RESOURCE_BUNDLE_DIR="$BUILD_BIN_DIR/Keyveil_Keyveil.bundle"
 fi
 
 mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
@@ -45,6 +47,7 @@ else
 fi
 cp "$PROJECT_DIR/Info.plist" "$CONTENTS_DIR/Info.plist"
 cp "$PROJECT_DIR/IconAssets/Keyveil.icns" "$RESOURCES_DIR/Keyveil.icns"
+ditto "$RESOURCE_BUNDLE_DIR" "$RESOURCES_DIR/Keyveil_Keyveil.bundle"
 xattr -cr "$STAGED_APP"
 if [[ "$SIGN_IDENTITY" == "-" ]]; then
     codesign --force --deep --sign - "$STAGED_APP"

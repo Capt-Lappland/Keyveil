@@ -91,13 +91,15 @@ enum ShortcutColumnLayout {
 
 @MainActor
 final class AppState: ObservableObject {
-    @Published var applicationName = "Current App"
+    @Published var applicationName = L10n.string("app.current")
     @Published var applicationIcon: NSImage?
     @Published var applicationPID: pid_t = 0
     @Published var groups: [ShortcutGroup] = []
     @Published var isLoading = false
     @Published var isPermissionPromptVisible = false
     @Published private(set) var permissionRevision = 0
+    @Published private(set) var loginItemStatus: LoginItemStatus
+    @Published private(set) var loginItemError: String?
     @Published var isPinned = false
     @Published private(set) var overlayPresentationRevision = 0
     @Published var holdDelay: TimeInterval {
@@ -111,6 +113,7 @@ final class AppState: ObservableObject {
     private let shortcutProvider: any ShortcutProviding
     private let accessibilityCheck: () -> Bool
     private let inputMonitoringCheck: () -> Bool
+    private let loginItemClient: LoginItemClient
     private var loadTask: Task<[ShortcutGroup]?, Never>?
     private var applicationBundleIdentifier = ""
     private var shortcutCache: [String: CacheEntry] = [:]
@@ -127,11 +130,14 @@ final class AppState: ObservableObject {
     init(
         shortcutProvider: any ShortcutProviding = AccessibilityShortcutService(),
         accessibilityCheck: @escaping () -> Bool = { AXIsProcessTrusted() },
-        inputMonitoringCheck: @escaping () -> Bool = { CGPreflightListenEventAccess() }
+        inputMonitoringCheck: @escaping () -> Bool = { CGPreflightListenEventAccess() },
+        loginItemClient: LoginItemClient = .live
     ) {
         self.shortcutProvider = shortcutProvider
         self.accessibilityCheck = accessibilityCheck
         self.inputMonitoringCheck = inputMonitoringCheck
+        self.loginItemClient = loginItemClient
+        loginItemStatus = loginItemClient.status()
         let savedDelay = UserDefaults.standard.double(forKey: Self.holdDelayKey)
         holdDelay = savedDelay == 0 ? 0.55 : min(max(savedDelay, 0.3), 1.2)
     }
@@ -154,7 +160,7 @@ final class AppState: ObservableObject {
 
     func updateApplication(_ application: NSRunningApplication) {
         updateApplication(
-            name: application.localizedName ?? "Current App",
+            name: application.localizedName ?? L10n.string("app.current"),
             icon: application.icon,
             processID: application.processIdentifier,
             bundleIdentifier: application.bundleIdentifier ?? "pid:\(application.processIdentifier)"
@@ -304,6 +310,34 @@ final class AppState: ObservableObject {
 
     func refreshPermissionStatus() {
         permissionRevision &+= 1
+    }
+
+    func refreshLoginItemStatus() {
+        let refreshedStatus = loginItemClient.status()
+        if refreshedStatus != loginItemStatus {
+            loginItemError = nil
+        }
+        loginItemStatus = refreshedStatus
+    }
+
+    func setLaunchAtLoginEnabled(_ isEnabled: Bool) {
+        loginItemError = nil
+
+        do {
+            try loginItemClient.setEnabled(isEnabled)
+        } catch {
+            loginItemStatus = loginItemClient.status()
+            if loginItemStatus != .requiresApproval {
+                loginItemError = error.localizedDescription
+            }
+            return
+        }
+
+        loginItemStatus = loginItemClient.status()
+    }
+
+    func openLoginItemsSettings() {
+        loginItemClient.openSystemSettings()
     }
 
     func openAccessibilitySettings() {

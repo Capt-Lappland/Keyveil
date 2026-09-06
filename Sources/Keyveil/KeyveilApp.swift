@@ -12,7 +12,7 @@ struct KeyveilApp: App {
         .windowResizability(.contentSize)
         .commands {
             CommandGroup(replacing: .appInfo) {
-                Button("About Keyveil") {
+                Button(L10n.string("menu.about")) {
                     NSApp.orderFrontStandardAboutPanel(nil)
                 }
             }

@@ -36,7 +36,7 @@ struct ShortcutPanelView: View {
                 Spacer()
                 ProgressView()
                     .controlSize(.small)
-                Text("Reading shortcuts…")
+                Text(L10n.string("panel.loading"))
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                     .padding(.top, 10)
@@ -69,7 +69,7 @@ struct ShortcutPanelView: View {
             .shadow(color: .black.opacity(0.20), radius: 7, y: 4)
 
             VStack(alignment: .leading, spacing: 3) {
-                Text("CURRENT APP")
+                Text(L10n.string("panel.current_app"))
                     .font(.system(size: 10, weight: .semibold))
                     .tracking(1.3)
                     .foregroundStyle(.secondary)
@@ -86,7 +86,11 @@ struct ShortcutPanelView: View {
                     .frame(width: 8, height: 8)
                     .shadow(color: .mint.opacity(0.7), radius: 5)
                 KeycapView(label: "⌘", compact: true)
-                Text(appState.isPinned ? "Pinned" : "Hold")
+                Text(
+                    appState.isPinned
+                        ? L10n.string("panel.pinned")
+                        : L10n.string("panel.hold")
+                )
                     .foregroundStyle(.secondary)
 
                 if appState.isPinned {
@@ -98,7 +102,7 @@ struct ShortcutPanelView: View {
                             .foregroundStyle(.tertiary)
                     }
                     .buttonStyle(.plain)
-                    .help("Close Keyveil")
+                    .help(L10n.string("panel.close"))
                 }
             }
             .font(.system(size: 13, weight: .medium))
@@ -141,9 +145,9 @@ struct ShortcutPanelView: View {
             Image(systemName: "keyboard.badge.ellipsis")
                 .font(.system(size: 31, weight: .light))
                 .foregroundStyle(.secondary)
-            Text("No shortcuts found")
+            Text(L10n.string("panel.empty.title"))
                 .font(.system(size: 16, weight: .medium))
-            Text("Try refreshing after granting Accessibility access.")
+            Text(L10n.string("panel.empty.description"))
                 .font(.system(size: 13))
                 .foregroundStyle(.tertiary)
             Spacer()
@@ -153,19 +157,22 @@ struct ShortcutPanelView: View {
 
     private var footer: some View {
         HStack {
-            Label("\(appState.shortcutCount) shortcuts", systemImage: "sparkles")
+            Label(
+                L10n.format("panel.shortcut_count", Int64(appState.shortcutCount)),
+                systemImage: "sparkles"
+            )
             Spacer()
             HStack(spacing: 6) {
                 Image(systemName: "arrow.up.arrow.down")
                     .accessibilityHidden(true)
                 if appState.isPinned {
-                    Text("Scroll if needed · Press Esc or double-tap")
+                    Text(L10n.string("panel.footer.pinned_before_key"))
                     KeycapView(label: "⌘", compact: true)
-                    Text("to close")
+                    Text(L10n.string("panel.footer.close_after_key"))
                 } else {
-                    Text("Scroll if needed · Release")
+                    Text(L10n.string("panel.footer.held_before_key"))
                     KeycapView(label: "⌘", compact: true)
-                    Text("to close")
+                    Text(L10n.string("panel.footer.close_after_key"))
                 }
             }
         }
@@ -206,12 +213,19 @@ private struct ShortcutGroupView: View {
                         .opacity(shortcut.isEnabled ? 1 : 0.68)
                     }
                     .frame(minHeight: 43)
-                    .help(shortcut.title + (shortcut.isEnabled ? "" : " (Unavailable)"))
+                    .help(
+                        shortcut.title
+                            + (shortcut.isEnabled
+                                ? ""
+                                : L10n.string("panel.shortcut.unavailable_suffix"))
+                    )
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel(shortcut.title)
                     .accessibilityValue(
                         shortcut.keys.joined(separator: " ")
-                            + (shortcut.isEnabled ? "" : ", unavailable")
+                            + (shortcut.isEnabled
+                                ? ""
+                                : L10n.string("panel.shortcut.unavailable_accessibility_suffix"))
                     )
 
                     if shortcut.id != group.shortcuts.last?.id {
@@ -259,10 +273,10 @@ private struct PermissionPromptView: View {
                 .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(.cyan)
 
-            Text("Finish setting up Keyveil")
+            Text(L10n.string("onboarding.title"))
                 .font(.system(size: 21, weight: .semibold, design: .rounded))
 
-            Text("Two macOS permissions are required. Choose one below; Keyveil will close before the system authorization appears.")
+            Text(L10n.string("onboarding.description"))
                 .multilineTextAlignment(.center)
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
@@ -271,18 +285,14 @@ private struct PermissionPromptView: View {
 
             VStack(spacing: 8) {
                 PermissionStatusRow(
-                    title: "Accessibility",
-                    detail: "Reads menu names and shortcut metadata",
-                    systemImage: "accessibility",
+                    kind: .accessibility,
                     isGranted: appState.isAccessibilityGranted
                 ) {
                     appState.requestAccessibilityFromOnboarding()
                 }
 
                 PermissionStatusRow(
-                    title: "Input Monitoring",
-                    detail: "Detects when Command is held",
-                    systemImage: "keyboard",
+                    kind: .inputMonitoring,
                     isGranted: appState.isInputMonitoringGranted
                 ) {
                     appState.requestInputMonitoringFromOnboarding()
@@ -290,7 +300,7 @@ private struct PermissionPromptView: View {
             }
             .frame(maxWidth: 500)
 
-            Button("Not Now") {
+            Button(L10n.string("onboarding.not_now")) {
                 appState.closeOverlay()
             }
             .buttonStyle(.plain)
@@ -302,23 +312,21 @@ private struct PermissionPromptView: View {
 }
 
 private struct PermissionStatusRow: View {
-    let title: String
-    let detail: String
-    let systemImage: String
+    let kind: PermissionKind
     let isGranted: Bool
     let action: () -> Void
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: systemImage)
+            Image(systemName: kind.systemImage)
                 .font(.system(size: 16, weight: .medium))
                 .frame(width: 24)
                 .foregroundStyle(isGranted ? .green : .cyan)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(title)
+                Text(kind.title)
                     .font(.system(size: 12, weight: .semibold))
-                Text(detail)
+                Text(kind.description)
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
             }
@@ -326,12 +334,12 @@ private struct PermissionStatusRow: View {
             Spacer()
 
             if isGranted {
-                Label("Granted", systemImage: "checkmark.circle.fill")
+                Label(L10n.string("onboarding.granted"), systemImage: "checkmark.circle.fill")
                     .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(.green)
             } else {
                 Button(action: action) {
-                    Text("Allow")
+                    Text(L10n.string("onboarding.allow"))
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 13)

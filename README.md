@@ -17,6 +17,8 @@ Keyveil is a lightweight macOS menu bar utility inspired by CheatSheet. Hold the
 - Uses a large adaptive 2–3 column shortcut wall with continuous vertical scrolling, adjustable hold delay, multi-display placement, and full-screen Space support
 - Caches each app's shortcuts for fast repeat display and safely ignores stale background reads
 - Preserves temporarily disabled menu shortcuts and displays them with reduced emphasis
+- Supports English and Simplified Chinese throughout the app
+- Can launch quietly at login through the native macOS login-item service
 - Runs as a small menu bar app without a Dock icon
 
 ## Requirements
@@ -61,6 +63,8 @@ Local packages are ad-hoc signed by default. You can set `CODESIGN_IDENTITY` to 
 
 On first launch, Keyveil presents a non-floating setup window for its two required permissions. Choosing **Allow** dismisses Keyveil before macOS presents the authorization interface, so the setup window never covers System Settings.
 
+The General settings pane also offers an optional **Launch Keyveil at login** switch. It is off by default and remains controlled by macOS in **System Settings → General → Login Items & Extensions**.
+
 Enable Keyveil in both locations if macOS asks:
 
 - **System Settings → Privacy & Security → Accessibility**
@@ -81,6 +85,14 @@ Preview the first-launch permission UI without automatically requesting permissi
 ```bash
 swift run Keyveil --preview-permissions
 ```
+
+Open the Settings scene without starting the global Command monitor or permission flow:
+
+```bash
+swift run Keyveil --preview-settings
+```
+
+Add `--preview-language=zh-Hans` to any preview command to inspect the Simplified Chinese localization without changing the Mac's preferred language.
 
 Run the full unit, state, gesture, layout, and rendering suite:
 

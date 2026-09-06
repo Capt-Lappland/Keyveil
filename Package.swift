@@ -4,6 +4,7 @@ import PackageDescription
 
 let package = Package(
     name: "Keyveil",
+    defaultLocalization: "en",
     platforms: [
         .macOS(.v14)
     ],
@@ -13,7 +14,10 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "Keyveil",
-            path: "Sources/Keyveil"
+            path: "Sources/Keyveil",
+            resources: [
+                .process("Resources")
+            ]
         ),
         .testTarget(
             name: "KeyveilTests",

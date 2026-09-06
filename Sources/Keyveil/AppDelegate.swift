@@ -14,17 +14,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var cancellables = Set<AnyCancellable>()
     private let isPreviewMode = CommandLine.arguments.contains("--preview")
     private let isPermissionPreviewMode = CommandLine.arguments.contains("--preview-permissions")
+    private let isSettingsPreviewMode = CommandLine.arguments.contains("--preview-settings")
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
 
         panelController = ShortcutPanelController(appState: appState)
         configureStatusItem()
-        if !isPreviewMode, !isPermissionPreviewMode {
+        if !isPreviewMode, !isPermissionPreviewMode, !isSettingsPreviewMode {
             startCommandMonitor()
         }
 
-        if isPermissionPreviewMode {
+        if isSettingsPreviewMode {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+                guard let self else { return }
+                self.openSettings()
+            }
+        } else if isPermissionPreviewMode {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
                 self?.panelController?.showPermissionPrompt()
             }
@@ -55,6 +61,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidBecomeActive(_ notification: Notification) {
         appState.refreshPermissionStatus()
+        appState.refreshLoginItemStatus()
+        guard !isPreviewMode, !isPermissionPreviewMode, !isSettingsPreviewMode else { return }
+
         if appState.hasRequiredPermissions {
             if commandMonitor?.start() == true {
                 stopPermissionPolling()
@@ -76,14 +85,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item.button?.imagePosition = .imageOnly
 
         let menu = NSMenu()
-        menu.addItem(NSMenuItem(title: "Show Keyveil", action: #selector(showPanel), keyEquivalent: ""))
-        menu.addItem(NSMenuItem(title: "Refresh Shortcuts", action: #selector(refreshShortcuts), keyEquivalent: "r"))
+        menu.addItem(NSMenuItem(title: L10n.string("menu.show"), action: #selector(showPanel), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: L10n.string("menu.refresh"), action: #selector(refreshShortcuts), keyEquivalent: "r"))
         menu.addItem(.separator())
-        menu.addItem(NSMenuItem(title: "Open Accessibility Settings…", action: #selector(openAccessibilitySettings), keyEquivalent: ""))
-        menu.addItem(NSMenuItem(title: "Open Input Monitoring Settings…", action: #selector(openInputMonitoringSettings), keyEquivalent: ""))
-        menu.addItem(NSMenuItem(title: "Settings…", action: #selector(openSettings), keyEquivalent: ","))
+        menu.addItem(NSMenuItem(title: L10n.string("menu.open_accessibility"), action: #selector(openAccessibilitySettings), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: L10n.string("menu.open_input_monitoring"), action: #selector(openInputMonitoringSettings), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: L10n.string("menu.settings"), action: #selector(openSettings), keyEquivalent: ","))
         menu.addItem(.separator())
-        menu.addItem(NSMenuItem(title: "Quit Keyveil", action: #selector(quit), keyEquivalent: "q"))
+        menu.addItem(NSMenuItem(title: L10n.string("menu.quit"), action: #selector(quit), keyEquivalent: "q"))
         menu.items.forEach { $0.target = self }
         item.menu = menu
         statusItem = item
@@ -149,7 +158,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func startPermissionPolling() {
-        guard !isPreviewMode, !isPermissionPreviewMode, permissionPollTimer == nil else { return }
+        guard !isPreviewMode,
+              !isPermissionPreviewMode,
+              !isSettingsPreviewMode,
+              permissionPollTimer == nil else { return }
 
         permissionPollTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor in
