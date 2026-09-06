@@ -32,6 +32,17 @@ final class ShortcutPanelRenderingTests: XCTestCase {
         try writeSnapshotIfRequested(snapshot, name: "keyveil-permissions.png")
     }
 
+    func testSettingsPanesRenderInLightAndDarkAppearances() throws {
+        let state = makeState(accessibilityGranted: false, inputMonitoringGranted: true)
+        let general = try renderSettings(state: state, selectedPane: "general", colorScheme: .light)
+        let permissions = try renderSettings(state: state, selectedPane: "permissions", colorScheme: .dark)
+
+        XCTAssertGreaterThan(general.count, 10_000)
+        XCTAssertGreaterThan(permissions.count, 10_000)
+        try writeSnapshotIfRequested(general, name: "keyveil-settings-general.png")
+        try writeSnapshotIfRequested(permissions, name: "keyveil-settings-permissions.png")
+    }
+
     func testLargeShortcutDatasetRenders() throws {
         let state = makeState()
         state.applicationName = "Stress Test"
@@ -89,13 +100,38 @@ final class ShortcutPanelRenderingTests: XCTestCase {
     }
 
     private func render(state: AppState, size: NSSize, colorScheme: ColorScheme) throws -> Data {
-        let hostingView = NSHostingView(
-            rootView: ZStack {
+        try renderView(
+            ZStack {
                 Color(nsColor: .windowBackgroundColor)
                 ShortcutPanelView()
                     .environmentObject(state)
-            }
-            .environment(\.colorScheme, colorScheme)
+            },
+            size: size,
+            colorScheme: colorScheme
+        )
+    }
+
+    private func renderSettings(
+        state: AppState,
+        selectedPane: String,
+        colorScheme: ColorScheme
+    ) throws -> Data {
+        UserDefaults.standard.set(selectedPane, forKey: "selectedSettingsPane")
+        return try renderView(
+            SettingsView()
+                .environmentObject(state),
+            size: NSSize(width: 640, height: selectedPane == "permissions" ? 510 : 540),
+            colorScheme: colorScheme
+        )
+    }
+
+    private func renderView<Content: View>(
+        _ content: Content,
+        size: NSSize,
+        colorScheme: ColorScheme
+    ) throws -> Data {
+        let hostingView = NSHostingView(
+            rootView: content.environment(\.colorScheme, colorScheme)
         )
         let window = NSWindow(
             contentRect: NSRect(origin: .zero, size: size),

@@ -9,6 +9,7 @@ struct KeyveilApp: App {
             SettingsView()
                 .environmentObject(appDelegate.appState)
         }
+        .windowResizability(.contentSize)
         .commands {
             CommandGroup(replacing: .appInfo) {
                 Button("About Keyveil") {
