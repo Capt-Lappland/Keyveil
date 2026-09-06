@@ -25,7 +25,7 @@
 "panel.error.retry" = "Try Again";
 "panel.error.partial_results" = "Partial results";
 "panel.error.cached_results" = "Refresh failed · Showing last results";
-"panel.footer.pinned_before_key" = "Scroll if needed · Press Esc or double-tap";
+"panel.footer.pinned_navigation" = "Page Up/Down · Home/End · Esc to close";
 "panel.footer.held_before_key" = "Scroll if needed · Release";
 "panel.footer.close_after_key" = "to close";
 "panel.shortcut.unavailable_suffix" = " (Unavailable)";

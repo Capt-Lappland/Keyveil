@@ -144,6 +144,7 @@ final class CommandHoldMonitor: @unchecked Sendable {
         stateQueue.sync {
             workItem?.cancel()
             workItem = nil
+            gestureState.reset()
         }
         if let runLoopSource {
             CFRunLoopRemoveSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
@@ -153,6 +154,12 @@ final class CommandHoldMonitor: @unchecked Sendable {
         }
         runLoopSource = nil
         eventTap = nil
+    }
+
+    @discardableResult
+    func restart() -> Bool {
+        stop()
+        return start()
     }
 
     private func handle(type: CGEventType, event: CGEvent) {

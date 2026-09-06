@@ -25,7 +25,7 @@
 "panel.error.retry" = "重试";
 "panel.error.partial_results" = "结果可能不完整";
 "panel.error.cached_results" = "刷新失败 · 正在显示上次结果";
-"panel.footer.pinned_before_key" = "必要时滚动 · 按 Esc 或连按两次";
+"panel.footer.pinned_navigation" = "Page Up/Down · Home/End · Esc 关闭";
 "panel.footer.held_before_key" = "必要时滚动 · 松开";
 "panel.footer.close_after_key" = "即可关闭";
 "panel.shortcut.unavailable_suffix" = "（不可用）";

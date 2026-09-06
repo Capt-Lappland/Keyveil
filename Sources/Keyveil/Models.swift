@@ -94,6 +94,20 @@ enum ShortcutLoadIssue: Equatable {
     case unavailable
 }
 
+enum ShortcutScrollCommand: Equatable, Sendable {
+    case lineUp
+    case lineDown
+    case pageUp
+    case pageDown
+    case home
+    case end
+}
+
+struct ShortcutScrollRequest: Equatable, Sendable {
+    let command: ShortcutScrollCommand
+    let revision: Int
+}
+
 @MainActor
 final class AppState: ObservableObject {
     @Published var applicationName = L10n.string("app.current")
@@ -109,6 +123,7 @@ final class AppState: ObservableObject {
     @Published private(set) var loginItemError: String?
     @Published var isPinned = false
     @Published private(set) var overlayPresentationRevision = 0
+    @Published private(set) var shortcutScrollRequest: ShortcutScrollRequest?
     @Published var holdDelay: TimeInterval {
         didSet {
             UserDefaults.standard.set(holdDelay, forKey: Self.holdDelayKey)
@@ -256,6 +271,14 @@ final class AppState: ObservableObject {
         loadShortcuts(forceRefresh: true)
     }
 
+    @discardableResult
+    func invalidateShortcutCache(for processID: pid_t) -> Bool {
+        guard processID == applicationPID else { return false }
+        shortcutCache.removeValue(forKey: applicationBundleIdentifier)
+        Diagnostics.shortcutScan.debug("Invalidated shortcut cache after a menu change")
+        return true
+    }
+
     func deferPermissionSetupForSession() {
         isPermissionSetupDeferred = true
         Diagnostics.permissions.notice("Permission setup deferred for this session")
@@ -286,6 +309,13 @@ final class AppState: ObservableObject {
 
     func beginShortcutPresentation() {
         overlayPresentationRevision &+= 1
+        shortcutScrollRequest = nil
+    }
+
+    func requestShortcutScroll(_ command: ShortcutScrollCommand) {
+        guard isPinned else { return }
+        let revision = (shortcutScrollRequest?.revision ?? 0) &+ 1
+        shortcutScrollRequest = ShortcutScrollRequest(command: command, revision: revision)
     }
 
     func loadPreviewData() {

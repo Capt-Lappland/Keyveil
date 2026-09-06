@@ -10,10 +10,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var commandMonitor: CommandHoldMonitor?
     private var statusItem: NSStatusItem?
     private var permissionSetupMenuItem: NSMenuItem?
-    private var workspaceObserver: NSObjectProtocol?
+    private var workspaceObservers: [NSObjectProtocol] = []
     private var permissionPollTimer: Timer?
     private var cancellables = Set<AnyCancellable>()
     private var lastPermissionState: PermissionState?
+    private let accessibilityMenuObserver = AccessibilityMenuObserver()
+    private let menuRefreshDebouncer = DebouncedAction(delay: .milliseconds(350))
+    private let runtimeRecoveryDebouncer = DebouncedAction(delay: .milliseconds(180))
     private let isPreviewMode = CommandLine.arguments.contains("--preview")
     private let isPermissionPreviewMode = CommandLine.arguments.contains("--preview-permissions")
     private let isSettingsPreviewMode = CommandLine.arguments.contains("--preview-settings")
@@ -48,7 +51,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.panelController?.show(pinned: true)
             }
         } else {
-            observeFrontmostApplication()
+            observeWorkspaceEvents()
             refreshCurrentApplication()
 
             if !appState.hasRequiredPermissions, !appState.isPermissionSetupDeferred {
@@ -65,9 +68,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         commandMonitor?.stop()
         permissionPollTimer?.invalidate()
-        if let workspaceObserver {
-            NSWorkspace.shared.notificationCenter.removeObserver(workspaceObserver)
+        accessibilityMenuObserver.stop()
+        menuRefreshDebouncer.cancel()
+        runtimeRecoveryDebouncer.cancel()
+        for observer in workspaceObservers {
+            NSWorkspace.shared.notificationCenter.removeObserver(observer)
         }
+        workspaceObservers = []
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
@@ -78,6 +85,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if appState.hasRequiredPermissions {
             if commandMonitor?.start() == true {
                 stopPermissionPolling()
+                observeCurrentApplicationMenu()
             } else {
                 startPermissionPolling()
             }
@@ -149,27 +157,97 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func observeFrontmostApplication() {
-        workspaceObserver = NSWorkspace.shared.notificationCenter.addObserver(
+    private func observeWorkspaceEvents() {
+        let notificationCenter = NSWorkspace.shared.notificationCenter
+
+        workspaceObservers.append(notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification,
             object: nil,
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor in
-                guard let self else { return }
-                self.appState.refreshPermissionStatus()
-                if self.appState.hasRequiredPermissions {
-                    if self.commandMonitor?.start() == true {
-                        self.stopPermissionPolling()
-                    }
-                } else {
-                    self.startPermissionPolling()
-                }
-                self.refreshCurrentApplication()
-                if self.panelController?.isPinned == true {
-                    self.appState.loadShortcuts()
-                }
+                self?.handleFrontmostApplicationChange()
             }
+        })
+
+        for name in [
+            NSWorkspace.willSleepNotification,
+            NSWorkspace.screensDidSleepNotification,
+            NSWorkspace.sessionDidResignActiveNotification
+        ] {
+            workspaceObservers.append(notificationCenter.addObserver(
+                forName: name,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in
+                    self?.suspendRuntimeForSystemInterruption()
+                }
+            })
+        }
+
+        for name in [
+            NSWorkspace.didWakeNotification,
+            NSWorkspace.screensDidWakeNotification,
+            NSWorkspace.sessionDidBecomeActiveNotification
+        ] {
+            workspaceObservers.append(notificationCenter.addObserver(
+                forName: name,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in
+                    self?.scheduleRuntimeRecovery()
+                }
+            })
+        }
+    }
+
+    private func handleFrontmostApplicationChange() {
+        appState.refreshPermissionStatus()
+        if appState.hasRequiredPermissions {
+            if commandMonitor?.start() == true {
+                stopPermissionPolling()
+            }
+        } else {
+            startPermissionPolling()
+        }
+        refreshCurrentApplication()
+        if panelController?.isPinned == true {
+            appState.loadShortcuts()
+        }
+    }
+
+    private func suspendRuntimeForSystemInterruption() {
+        Diagnostics.lifecycle.notice("Suspending runtime monitors for a system interruption")
+        runtimeRecoveryDebouncer.cancel()
+        menuRefreshDebouncer.cancel()
+        accessibilityMenuObserver.stop()
+        commandMonitor?.stop()
+        stopPermissionPolling()
+        panelController?.hide(force: true)
+    }
+
+    private func scheduleRuntimeRecovery() {
+        runtimeRecoveryDebouncer.schedule { [weak self] in
+            self?.recoverRuntimeAfterSystemInterruption()
+        }
+    }
+
+    private func recoverRuntimeAfterSystemInterruption() {
+        appState.refreshPermissionStatus()
+        refreshCurrentApplication()
+
+        let monitorStarted = appState.hasRequiredPermissions
+            && commandMonitor?.restart() == true
+        if monitorStarted {
+            stopPermissionPolling()
+            observeCurrentApplicationMenu()
+            Diagnostics.lifecycle.notice("Runtime monitors recovered after a system interruption")
+        } else {
+            accessibilityMenuObserver.stop()
+            startPermissionPolling()
+            Diagnostics.lifecycle.warning("Runtime recovery is waiting for permission")
         }
     }
 
@@ -222,6 +300,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let monitorStarted = self.commandMonitor?.start() == true
                 if self.appState.hasRequiredPermissions, monitorStarted {
                     self.stopPermissionPolling()
+                    self.observeCurrentApplicationMenu()
                 }
             }
         }
@@ -236,6 +315,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let application = NSWorkspace.shared.frontmostApplication,
               application.bundleIdentifier != Bundle.main.bundleIdentifier else { return }
         appState.updateApplication(application)
+        observeCurrentApplicationMenu()
+    }
+
+    private func observeCurrentApplicationMenu() {
+        guard appState.isAccessibilityGranted, appState.applicationPID > 0 else {
+            accessibilityMenuObserver.stop()
+            return
+        }
+
+        accessibilityMenuObserver.observe(processID: appState.applicationPID) { [weak self] processID in
+            self?.scheduleShortcutRefresh(afterMenuChangeFor: processID)
+        }
+    }
+
+    private func scheduleShortcutRefresh(afterMenuChangeFor processID: pid_t) {
+        guard processID == appState.applicationPID else { return }
+        menuRefreshDebouncer.schedule { [weak self] in
+            guard let self, processID == self.appState.applicationPID else { return }
+            if self.panelController?.isPinned == true {
+                self.appState.loadShortcuts(forceRefresh: true)
+            } else {
+                self.appState.invalidateShortcutCache(for: processID)
+            }
+        }
     }
 
     private func presentForCurrentApplication(pinned: Bool) {
@@ -320,6 +423,13 @@ final class ShortcutPanelController {
         }
         panel.onEscape = { [weak self] in
             self?.hide(force: true)
+        }
+        panel.onScrollCommand = { [weak appState] command in
+            guard let appState,
+                  appState.isPinned,
+                  !appState.isPermissionPromptVisible else { return false }
+            appState.requestShortcutScroll(command)
+            return true
         }
     }
 
@@ -436,6 +546,7 @@ final class ShortcutPanelController {
 
 final class OverlayPanel: NSPanel {
     var onEscape: (() -> Void)?
+    var onScrollCommand: ((ShortcutScrollCommand) -> Bool)?
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
@@ -445,6 +556,26 @@ final class OverlayPanel: NSPanel {
             onEscape?()
             return
         }
+        if let command = Self.shortcutScrollCommand(for: event),
+           onScrollCommand?(command) == true {
+            return
+        }
         super.sendEvent(event)
+    }
+
+    static func shortcutScrollCommand(for event: NSEvent) -> ShortcutScrollCommand? {
+        guard event.type == .keyDown else { return nil }
+        let disallowedModifiers: NSEvent.ModifierFlags = [.command, .control, .option]
+        guard event.modifierFlags.intersection(disallowedModifiers).isEmpty else { return nil }
+
+        return switch event.keyCode {
+        case 126: .lineUp
+        case 125: .lineDown
+        case 116: .pageUp
+        case 121: .pageDown
+        case 115: .home
+        case 119: .end
+        default: nil
+        }
     }
 }

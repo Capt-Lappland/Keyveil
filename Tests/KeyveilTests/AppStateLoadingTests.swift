@@ -93,6 +93,48 @@ final class AppStateLoadingTests: XCTestCase {
         XCTAssertEqual(state.shortcutCount, 3)
     }
 
+    func testMenuChangeInvalidatesOnlyTheMatchingApplicationCache() async {
+        let firstGroups = [group("Initial", itemCount: 2)]
+        let refreshedGroups = [group("Updated", itemCount: 4)]
+        let provider = SequenceShortcutProvider([.success(firstGroups), .success(refreshedGroups)])
+        let state = makeState(provider: provider)
+        state.updateApplication(name: "App", icon: nil, processID: 43, bundleIdentifier: "test.observe")
+
+        state.loadShortcuts()
+        await waitUntil { provider.callCount == 1 && state.groups == firstGroups }
+
+        XCTAssertFalse(state.invalidateShortcutCache(for: 99))
+        state.loadShortcuts()
+        XCTAssertEqual(provider.callCount, 1)
+
+        XCTAssertTrue(state.invalidateShortcutCache(for: 43))
+        state.loadShortcuts()
+        await waitUntil { provider.callCount == 2 && state.groups == refreshedGroups }
+    }
+
+    func testScrollRequestsArePublishedOnlyWhilePinned() {
+        let state = makeState(provider: SequenceShortcutProvider([]))
+
+        state.requestShortcutScroll(.pageDown)
+        XCTAssertNil(state.shortcutScrollRequest)
+
+        state.isPinned = true
+        state.requestShortcutScroll(.pageDown)
+        XCTAssertEqual(
+            state.shortcutScrollRequest,
+            ShortcutScrollRequest(command: .pageDown, revision: 1)
+        )
+
+        state.requestShortcutScroll(.end)
+        XCTAssertEqual(
+            state.shortcutScrollRequest,
+            ShortcutScrollRequest(command: .end, revision: 2)
+        )
+
+        state.beginShortcutPresentation()
+        XCTAssertNil(state.shortcutScrollRequest)
+    }
+
     func testCancelledLateScanCannotOverwriteNewApplication() async {
         let oldGroups = [group("Old Result", itemCount: 8)]
         let newGroups = [group("New Result", itemCount: 2)]

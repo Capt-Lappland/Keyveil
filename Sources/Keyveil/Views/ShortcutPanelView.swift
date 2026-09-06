@@ -4,6 +4,7 @@ import SwiftUI
 
 struct ShortcutPanelView: View {
     @EnvironmentObject private var appState: AppState
+    @StateObject private var scrollController = ShortcutScrollController()
 
     var body: some View {
         ZStack {
@@ -135,8 +136,17 @@ struct ShortcutPanelView: View {
                     }
                 }
                 .padding(.vertical, 2)
+                .background {
+                    ScrollViewResolver { scrollView in
+                        scrollController.attach(scrollView)
+                    }
+                }
             }
             .id(appState.overlayPresentationRevision)
+            .onChange(of: appState.shortcutScrollRequest) { _, request in
+                guard let request else { return }
+                scrollController.perform(request.command)
+            }
         }
     }
 
@@ -213,9 +223,7 @@ struct ShortcutPanelView: View {
                 Image(systemName: "arrow.up.arrow.down")
                     .accessibilityHidden(true)
                 if appState.isPinned {
-                    Text(L10n.string("panel.footer.pinned_before_key"))
-                    KeycapView(label: "⌘", compact: true)
-                    Text(L10n.string("panel.footer.close_after_key"))
+                    Text(L10n.string("panel.footer.pinned_navigation"))
                 } else {
                     Text(L10n.string("panel.footer.held_before_key"))
                     KeycapView(label: "⌘", compact: true)
@@ -236,6 +244,90 @@ struct ShortcutPanelView: View {
             L10n.string("panel.error.cached_results")
         case nil:
             ""
+        }
+    }
+}
+
+@MainActor
+final class ShortcutScrollController: ObservableObject {
+    private weak var scrollView: NSScrollView?
+    private var pendingCommand: ShortcutScrollCommand?
+
+    func attach(_ scrollView: NSScrollView) {
+        self.scrollView = scrollView
+        if let pendingCommand {
+            self.pendingCommand = nil
+            perform(pendingCommand)
+        }
+    }
+
+    func perform(_ command: ShortcutScrollCommand) {
+        guard let scrollView, let documentView = scrollView.documentView else {
+            pendingCommand = command
+            return
+        }
+
+        scrollView.layoutSubtreeIfNeeded()
+        let clipView = scrollView.contentView
+        let minimumY = documentView.bounds.minY
+        let maximumY = max(minimumY, documentView.bounds.maxY - clipView.bounds.height)
+        let currentY = clipView.bounds.minY
+        let lineDistance: CGFloat = 52
+        let pageDistance = max(80, clipView.bounds.height * 0.82)
+        let targetY: CGFloat
+
+        switch command {
+        case .lineUp:
+            targetY = currentY - lineDistance
+        case .lineDown:
+            targetY = currentY + lineDistance
+        case .pageUp:
+            targetY = currentY - pageDistance
+        case .pageDown:
+            targetY = currentY + pageDistance
+        case .home:
+            targetY = minimumY
+        case .end:
+            targetY = maximumY
+        }
+
+        let clampedY = min(max(targetY, minimumY), maximumY)
+        clipView.scroll(to: NSPoint(x: clipView.bounds.minX, y: clampedY))
+        scrollView.reflectScrolledClipView(clipView)
+    }
+}
+
+private struct ScrollViewResolver: NSViewRepresentable {
+    let onResolve: @MainActor (NSScrollView) -> Void
+
+    func makeNSView(context: Context) -> ScrollViewProbe {
+        let view = ScrollViewProbe()
+        view.onResolve = onResolve
+        return view
+    }
+
+    func updateNSView(_ nsView: ScrollViewProbe, context: Context) {
+        nsView.onResolve = onResolve
+        nsView.resolveEnclosingScrollView()
+    }
+}
+
+private final class ScrollViewProbe: NSView {
+    var onResolve: (@MainActor (NSScrollView) -> Void)?
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        resolveEnclosingScrollView()
+    }
+
+    func resolveEnclosingScrollView() {
+        var ancestor = superview
+        while let view = ancestor {
+            if let scrollView = view as? NSScrollView {
+                onResolve?(scrollView)
+                return
+            }
+            ancestor = view.superview
         }
     }
 }

@@ -35,6 +35,19 @@ final class ShortcutPanelRenderingTests: XCTestCase {
         try writeSnapshotIfRequested(snapshot, name: "keyveil-permissions.png")
     }
 
+    func testPinnedPanelRendersKeyboardNavigationGuidanceAtCompactSize() throws {
+        let state = makeState()
+        state.loadPreviewData()
+        state.isPinned = true
+        state.beginShortcutPresentation()
+
+        let size = NSSize(width: 760, height: 520)
+        let snapshot = try render(state: state, size: size, colorScheme: .light)
+
+        try assertRenderedSnapshot(snapshot, expectedSize: size)
+        try writeSnapshotIfRequested(snapshot, name: "keyveil-shortcuts-pinned-compact.png")
+    }
+
     func testRetryableShortcutFailuresRender() async throws {
         let size = NSSize(width: 760, height: 520)
         let timeoutState = makeState(shortcutResult: .timedOut([]))
