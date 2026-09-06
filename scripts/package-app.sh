@@ -10,6 +10,7 @@ STAGING_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/keyveil-package.XXXXXX")"
 STAGED_APP="$STAGING_ROOT/Keyveil.app"
 CONTENTS_DIR="$STAGED_APP/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
+RESOURCES_DIR="$CONTENTS_DIR/Resources"
 KEYVEIL_DEVELOPER_DIR="${DEVELOPER_DIR:-$(/usr/bin/xcode-select -p)}"
 SWIFT_BIN="$(DEVELOPER_DIR="$KEYVEIL_DEVELOPER_DIR" /usr/bin/xcrun --find swift)"
 LIPO_BIN="$(DEVELOPER_DIR="$KEYVEIL_DEVELOPER_DIR" /usr/bin/xcrun --find lipo)"
@@ -33,7 +34,7 @@ else
     BUILD_BIN_DIR="$(DEVELOPER_DIR="$KEYVEIL_DEVELOPER_DIR" "$SWIFT_BIN" build -c "$CONFIGURATION" --show-bin-path)"
 fi
 
-mkdir -p "$MACOS_DIR"
+mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 if [[ "$CONFIGURATION" == "release" ]]; then
     "$LIPO_BIN" -create \
         "$ARM64_BIN_DIR/Keyveil" \
@@ -43,6 +44,7 @@ else
     cp "$BUILD_BIN_DIR/Keyveil" "$MACOS_DIR/Keyveil"
 fi
 cp "$PROJECT_DIR/Info.plist" "$CONTENTS_DIR/Info.plist"
+cp "$PROJECT_DIR/IconAssets/Keyveil.icns" "$RESOURCES_DIR/Keyveil.icns"
 xattr -cr "$STAGED_APP"
 if [[ "$SIGN_IDENTITY" == "-" ]]; then
     codesign --force --deep --sign - "$STAGED_APP"

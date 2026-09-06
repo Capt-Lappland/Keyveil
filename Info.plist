@@ -8,6 +8,8 @@
     <string>Keyveil</string>
     <key>CFBundleExecutable</key>
     <string>Keyveil</string>
+    <key>CFBundleIconFile</key>
+    <string>Keyveil.icns</string>
     <key>CFBundleIdentifier</key>
     <string>app.keyveil.mac</string>
     <key>CFBundleInfoDictionaryVersion</key>
@@ -17,9 +19,9 @@
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.3.1</string>
+    <string>0.3.2</string>
     <key>CFBundleVersion</key>
-    <string>5</string>
+    <string>6</string>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
     <key>LSUIElement</key>

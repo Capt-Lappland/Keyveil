@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <path
+    d="M400 400H288C210 400 160 350 160 280C160 210 210 160 280 160C350 160 400 210 400 280V744C400 814 350 864 280 864C210 864 160 814 160 744C160 674 210 624 288 624H736C814 624 864 674 864 744C864 814 814 864 744 864C674 864 624 814 624 744V280C624 210 674 160 744 160C814 160 864 210 864 280C864 350 814 400 736 400H400"
+    fill="none"
+    stroke="#C5CAD0"
+    stroke-width="82"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+</svg>

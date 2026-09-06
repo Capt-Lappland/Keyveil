@@ -28,6 +28,10 @@ Keyveil is a lightweight macOS menu bar utility inspired by CheatSheet. Hold the
 
 Keyveil does not record keystrokes, window content, or typed text. The global event tap only observes modifier changes and cancels itself when another key is pressed.
 
+## App icon
+
+The app icon is authored with Apple's Icon Composer from a deterministic geometric Command-symbol layer. Its white background and Liquid Glass specular, translucency, and shadow settings live in [`IconAssets/Keyveil.icon`](IconAssets/Keyveil.icon); no generative imagery is used. The packaging script includes the Apple-exported `Keyveil.icns` fallback for macOS 14 and later.
+
 ## Controls
 
 - Hold `Command`: show Keyveil temporarily
