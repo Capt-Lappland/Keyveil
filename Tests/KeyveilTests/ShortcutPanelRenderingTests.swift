@@ -35,6 +35,38 @@ final class ShortcutPanelRenderingTests: XCTestCase {
         try writeSnapshotIfRequested(snapshot, name: "keyveil-permissions.png")
     }
 
+    func testRetryableShortcutFailuresRender() async throws {
+        let size = NSSize(width: 760, height: 520)
+        let timeoutState = makeState(shortcutResult: .timedOut([]))
+        timeoutState.updateApplication(
+            name: "Unresponsive App",
+            icon: nil,
+            processID: 301,
+            bundleIdentifier: "test.timeout.render"
+        )
+        timeoutState.loadShortcuts()
+        await waitUntil { !timeoutState.isLoading }
+
+        let unavailableState = makeState(shortcutResult: .unavailable)
+        unavailableState.updateApplication(
+            name: "Unavailable App",
+            icon: nil,
+            processID: 302,
+            bundleIdentifier: "test.unavailable.render"
+        )
+        unavailableState.loadShortcuts()
+        await waitUntil { !unavailableState.isLoading }
+
+        let timeout = try render(state: timeoutState, size: size, colorScheme: .light)
+        let unavailable = try render(state: unavailableState, size: size, colorScheme: .dark)
+
+        try assertRenderedSnapshot(timeout, expectedSize: size)
+        try assertRenderedSnapshot(unavailable, expectedSize: size)
+        XCTAssertNotEqual(timeout, unavailable)
+        try writeSnapshotIfRequested(timeout, name: "keyveil-shortcuts-timeout.png")
+        try writeSnapshotIfRequested(unavailable, name: "keyveil-shortcuts-unavailable.png")
+    }
+
     func testSettingsPanesRenderInLightAndDarkAppearances() throws {
         let state = makeState(
             accessibilityGranted: false,
@@ -213,10 +245,11 @@ final class ShortcutPanelRenderingTests: XCTestCase {
     private func makeState(
         accessibilityGranted: Bool = true,
         inputMonitoringGranted: Bool = true,
-        loginItemStatus: LoginItemStatus = .disabled
+        loginItemStatus: LoginItemStatus = .disabled,
+        shortcutResult: ShortcutScanResult = .success([])
     ) -> AppState {
         AppState(
-            shortcutProvider: EmptyShortcutProvider(),
+            shortcutProvider: FixedShortcutProvider(result: shortcutResult),
             accessibilityCheck: { accessibilityGranted },
             inputMonitoringCheck: { inputMonitoringGranted },
             loginItemClient: LoginItemClient(
@@ -225,6 +258,18 @@ final class ShortcutPanelRenderingTests: XCTestCase {
                 openSystemSettings: {}
             )
         )
+    }
+
+    private func waitUntil(
+        _ predicate: @escaping @MainActor () -> Bool,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async {
+        for _ in 0..<200 {
+            if predicate() { return }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        XCTFail("Timed out waiting for asynchronous state", file: file, line: line)
     }
 
     private func assertRenderedSnapshot(
@@ -259,8 +304,10 @@ final class ShortcutPanelRenderingTests: XCTestCase {
     }
 }
 
-private struct EmptyShortcutProvider: ShortcutProviding {
-    func shortcuts(for processID: pid_t) -> [ShortcutGroup]? { [] }
+private struct FixedShortcutProvider: ShortcutProviding {
+    let result: ShortcutScanResult
+
+    func shortcuts(for processID: pid_t) -> ShortcutScanResult { result }
 }
 
 private enum SnapshotError: Error {

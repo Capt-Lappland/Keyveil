@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 
 struct ShortcutPanelView: View {
@@ -142,25 +143,71 @@ struct ShortcutPanelView: View {
     private var emptyState: some View {
         VStack(spacing: 12) {
             Spacer()
-            Image(systemName: "keyboard.badge.ellipsis")
+            Image(systemName: emptyStateSymbol)
                 .font(.system(size: 31, weight: .light))
                 .foregroundStyle(.secondary)
-            Text(L10n.string("panel.empty.title"))
+            Text(emptyStateTitle)
                 .font(.system(size: 16, weight: .medium))
-            Text(L10n.string("panel.empty.description"))
+            Text(emptyStateDescription)
                 .font(.system(size: 13))
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+
+            if appState.shortcutLoadIssue != nil {
+                Button {
+                    appState.retryShortcutLoad()
+                } label: {
+                    Label(L10n.string("panel.error.retry"), systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.regular)
+                .padding(.top, 2)
+            }
             Spacer()
         }
         .frame(maxWidth: .infinity)
     }
 
+    private var emptyStateSymbol: String {
+        switch appState.shortcutLoadIssue {
+        case .timedOut: "clock.badge.exclamationmark"
+        case .unavailable: "exclamationmark.triangle"
+        case nil: "keyboard.badge.ellipsis"
+        }
+    }
+
+    private var emptyStateTitle: String {
+        switch appState.shortcutLoadIssue {
+        case .timedOut: L10n.string("panel.error.timeout.title")
+        case .unavailable: L10n.string("panel.error.unavailable.title")
+        case nil: L10n.string("panel.empty.title")
+        }
+    }
+
+    private var emptyStateDescription: String {
+        switch appState.shortcutLoadIssue {
+        case .timedOut: L10n.string("panel.error.timeout.description")
+        case .unavailable: L10n.string("panel.error.unavailable.description")
+        case nil: L10n.string("panel.empty.description")
+        }
+    }
+
     private var footer: some View {
         HStack {
-            Label(
-                L10n.format("panel.shortcut_count", Int64(appState.shortcutCount)),
-                systemImage: "sparkles"
-            )
+            HStack(spacing: 12) {
+                Label(
+                    L10n.format("panel.shortcut_count", Int64(appState.shortcutCount)),
+                    systemImage: "sparkles"
+                )
+
+                if appState.shortcutLoadIssue != nil, !appState.groups.isEmpty {
+                    Label(
+                        footerIssueLabel,
+                        systemImage: "exclamationmark.triangle.fill"
+                    )
+                    .foregroundStyle(.orange)
+                }
+            }
             Spacer()
             HStack(spacing: 6) {
                 Image(systemName: "arrow.up.arrow.down")
@@ -179,6 +226,17 @@ struct ShortcutPanelView: View {
         .font(.system(size: 12, weight: .medium))
         .foregroundStyle(.secondary)
         .padding(.top, 12)
+    }
+
+    private var footerIssueLabel: String {
+        switch appState.shortcutLoadIssue {
+        case .timedOut:
+            L10n.string("panel.error.partial_results")
+        case .unavailable:
+            L10n.string("panel.error.cached_results")
+        case nil:
+            ""
+        }
     }
 }
 
@@ -301,7 +359,7 @@ private struct PermissionPromptView: View {
             .frame(maxWidth: 500)
 
             Button(L10n.string("onboarding.not_now")) {
-                appState.closeOverlay()
+                appState.deferPermissionSetupForSession()
             }
             .buttonStyle(.plain)
             .font(.system(size: 12, weight: .medium))
@@ -361,30 +419,62 @@ private struct PermissionStatusRow: View {
 
 private struct LiquidGlassSurface: View {
     let cornerRadius: CGFloat
+    @State private var displayOptionsRevision = 0
 
-    @ViewBuilder
+    private var reduceTransparency: Bool {
+        _ = displayOptionsRevision
+        return NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
+    }
+
+    private var increaseContrast: Bool {
+        _ = displayOptionsRevision
+        return NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+    }
+
     var body: some View {
-        if #available(macOS 26.0, *) {
-            Color.clear
-                .glassEffect(.regular, in: .rect(cornerRadius: cornerRadius))
-                .overlay {
-                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .stroke(
-                            LinearGradient(
-                                colors: [.white.opacity(0.32), .cyan.opacity(0.10), .purple.opacity(0.08), .white.opacity(0.16)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            lineWidth: 0.8
-                        )
-                }
-        } else {
-            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .overlay {
-                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .stroke(.white.opacity(0.17), lineWidth: 0.8)
-                }
+        Group {
+            if reduceTransparency {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(Color(nsColor: .windowBackgroundColor))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                            .stroke(.primary.opacity(0.42), lineWidth: increaseContrast ? 1.5 : 0.8)
+                    }
+                    .onAppear {
+                        Diagnostics.presentation.notice("Using an opaque overlay for Reduce Transparency")
+                    }
+            } else if #available(macOS 26.0, *) {
+                Color.clear
+                    .glassEffect(.regular, in: .rect(cornerRadius: cornerRadius))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                            .stroke(
+                                LinearGradient(
+                                    colors: [.white.opacity(0.32), .cyan.opacity(0.10), .purple.opacity(0.08), .white.opacity(0.16)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: increaseContrast ? 1.5 : 0.8
+                            )
+                    }
+            } else {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                            .stroke(
+                                .white.opacity(increaseContrast ? 0.38 : 0.17),
+                                lineWidth: increaseContrast ? 1.5 : 0.8
+                            )
+                    }
+            }
+        }
+        .onReceive(
+            NSWorkspace.shared.notificationCenter.publisher(
+                for: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification
+            )
+        ) { _ in
+            displayOptionsRevision &+= 1
         }
     }
 }

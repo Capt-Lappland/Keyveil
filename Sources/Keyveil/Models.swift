@@ -89,6 +89,11 @@ enum ShortcutColumnLayout {
     }
 }
 
+enum ShortcutLoadIssue: Equatable {
+    case timedOut
+    case unavailable
+}
+
 @MainActor
 final class AppState: ObservableObject {
     @Published var applicationName = L10n.string("app.current")
@@ -96,7 +101,9 @@ final class AppState: ObservableObject {
     @Published var applicationPID: pid_t = 0
     @Published var groups: [ShortcutGroup] = []
     @Published var isLoading = false
+    @Published private(set) var shortcutLoadIssue: ShortcutLoadIssue?
     @Published var isPermissionPromptVisible = false
+    @Published private(set) var isPermissionSetupDeferred = false
     @Published private(set) var permissionRevision = 0
     @Published private(set) var loginItemStatus: LoginItemStatus
     @Published private(set) var loginItemError: String?
@@ -114,7 +121,7 @@ final class AppState: ObservableObject {
     private let accessibilityCheck: () -> Bool
     private let inputMonitoringCheck: () -> Bool
     private let loginItemClient: LoginItemClient
-    private var loadTask: Task<[ShortcutGroup]?, Never>?
+    private var loadTask: Task<ShortcutScanResult, Never>?
     private var applicationBundleIdentifier = ""
     private var shortcutCache: [String: CacheEntry] = [:]
 
@@ -182,11 +189,13 @@ final class AppState: ObservableObject {
         let now = Date()
         loadTask?.cancel()
         loadTask = nil
+        shortcutLoadIssue = nil
 
         if let cached = shortcutCache[cacheKey] {
             groups = cached.groups
             isLoading = false
             if !forceRefresh, now.timeIntervalSince(cached.loadedAt) < Self.cacheLifetime {
+                Diagnostics.shortcutScan.debug("Using a fresh shortcut cache entry")
                 return
             }
         } else {
@@ -196,13 +205,15 @@ final class AppState: ObservableObject {
         }
 
         let provider = shortcutProvider
+        let scanStartedAt = ProcessInfo.processInfo.systemUptime
+        Diagnostics.shortcutScan.debug("Starting shortcut scan")
         let scanTask = Task.detached(priority: .userInitiated) {
             provider.shortcuts(for: pid)
         }
         loadTask = scanTask
 
         Task { [weak self] in
-            let loadedGroups = await scanTask.value
+            let result = await scanTask.value
 
             guard !scanTask.isCancelled,
                   let self,
@@ -210,17 +221,49 @@ final class AppState: ObservableObject {
                   self.applicationBundleIdentifier == cacheKey else { return }
 
             self.loadTask = nil
-            guard let loadedGroups else {
-                // A transient AX failure should be retried on the next reveal,
-                // rather than cached as an empty result for two minutes.
-                self.isLoading = false
-                return
+            let elapsedMilliseconds = Int(
+                (ProcessInfo.processInfo.systemUptime - scanStartedAt) * 1_000
+            )
+
+            switch result {
+            case let .success(loadedGroups):
+                self.storeInCache(loadedGroups, for: cacheKey, at: Date())
+                self.groups = loadedGroups
+                self.shortcutLoadIssue = nil
+                Diagnostics.shortcutScan.info(
+                    "Shortcut scan completed in \(elapsedMilliseconds, privacy: .public) ms with \(self.shortcutCount, privacy: .public) items"
+                )
+            case let .timedOut(partialGroups):
+                if !partialGroups.isEmpty {
+                    self.groups = partialGroups
+                }
+                self.shortcutLoadIssue = .timedOut
+                Diagnostics.shortcutScan.warning(
+                    "Shortcut scan timed out after \(elapsedMilliseconds, privacy: .public) ms"
+                )
+            case .unavailable:
+                self.shortcutLoadIssue = .unavailable
+                Diagnostics.shortcutScan.error(
+                    "Shortcut scan failed after \(elapsedMilliseconds, privacy: .public) ms"
+                )
             }
 
-            self.storeInCache(loadedGroups, for: cacheKey, at: Date())
-            self.groups = loadedGroups
             self.isLoading = false
         }
+    }
+
+    func retryShortcutLoad() {
+        loadShortcuts(forceRefresh: true)
+    }
+
+    func deferPermissionSetupForSession() {
+        isPermissionSetupDeferred = true
+        Diagnostics.permissions.notice("Permission setup deferred for this session")
+        closeOverlay()
+    }
+
+    func resumePermissionSetup() {
+        isPermissionSetupDeferred = false
     }
 
     private func storeInCache(_ groups: [ShortcutGroup], for key: String, at date: Date) {
@@ -250,6 +293,7 @@ final class AppState: ObservableObject {
         applicationIcon = NSImage(systemSymbolName: "safari", accessibilityDescription: "Safari")
         isPermissionPromptVisible = false
         isLoading = false
+        shortcutLoadIssue = nil
         groups = [
             ShortcutGroup(title: "Tabs", shortcuts: [
                 ShortcutItem(title: "New Tab", keys: ["⌘", "T"], path: "Tabs"),

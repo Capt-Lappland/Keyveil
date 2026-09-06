@@ -3,10 +3,13 @@
 "menu.about" = "关于 Keyveil";
 "menu.show" = "显示 Keyveil";
 "menu.refresh" = "刷新快捷键";
+"menu.complete_setup" = "完成权限设置…";
 "menu.open_accessibility" = "打开辅助功能设置…";
 "menu.open_input_monitoring" = "打开输入监控设置…";
 "menu.settings" = "设置…";
 "menu.quit" = "退出 Keyveil";
+"menu.status.ready" = "Keyveil 已就绪";
+"menu.status.permission_required" = "Keyveil 需要权限";
 
 "panel.loading" = "正在读取快捷键…";
 "panel.current_app" = "当前应用";
@@ -15,6 +18,13 @@
 "panel.close" = "关闭 Keyveil";
 "panel.empty.title" = "未找到快捷键";
 "panel.empty.description" = "授予辅助功能权限后，请尝试刷新。";
+"panel.error.timeout.title" = "读取快捷键超时";
+"panel.error.timeout.description" = "当前应用未及时响应，你可以重试。";
+"panel.error.unavailable.title" = "无法读取快捷键";
+"panel.error.unavailable.description" = "当前暂时无法访问此应用的菜单。";
+"panel.error.retry" = "重试";
+"panel.error.partial_results" = "结果可能不完整";
+"panel.error.cached_results" = "刷新失败 · 正在显示上次结果";
 "panel.footer.pinned_before_key" = "必要时滚动 · 按 Esc 或连按两次";
 "panel.footer.held_before_key" = "必要时滚动 · 松开";
 "panel.footer.close_after_key" = "即可关闭";

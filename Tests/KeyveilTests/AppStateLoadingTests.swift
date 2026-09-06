@@ -46,10 +46,51 @@ final class AppStateLoadingTests: XCTestCase {
         state.loadShortcuts()
         await waitUntil { provider.callCount == 1 && !state.isLoading }
         XCTAssertTrue(state.groups.isEmpty)
+        XCTAssertEqual(state.shortcutLoadIssue, .unavailable)
 
         state.loadShortcuts()
         await waitUntil { provider.callCount == 2 && state.groups == recoveredGroups }
         XCTAssertEqual(state.groups, recoveredGroups)
+        XCTAssertNil(state.shortcutLoadIssue)
+    }
+
+    func testTimedOutScanShowsPartialResultsAndRetryRecovers() async {
+        let partialGroups = [group("Partial", itemCount: 2)]
+        let completeGroups = [group("Complete", itemCount: 5)]
+        let provider = SequenceShortcutProvider([
+            .timedOut(partialGroups),
+            .success(completeGroups)
+        ])
+        let state = makeState(provider: provider)
+        state.updateApplication(name: "App", icon: nil, processID: 41, bundleIdentifier: "test.timeout")
+
+        state.loadShortcuts()
+        await waitUntil { provider.callCount == 1 && !state.isLoading }
+
+        XCTAssertEqual(state.groups, partialGroups)
+        XCTAssertEqual(state.shortcutLoadIssue, .timedOut)
+
+        state.retryShortcutLoad()
+        await waitUntil { provider.callCount == 2 && !state.isLoading }
+
+        XCTAssertEqual(state.groups, completeGroups)
+        XCTAssertNil(state.shortcutLoadIssue)
+    }
+
+    func testFailedForceRefreshKeepsLastKnownShortcuts() async {
+        let cachedGroups = [group("Cached", itemCount: 3)]
+        let provider = SequenceShortcutProvider([.success(cachedGroups), .failure])
+        let state = makeState(provider: provider)
+        state.updateApplication(name: "App", icon: nil, processID: 42, bundleIdentifier: "test.stale")
+
+        state.loadShortcuts()
+        await waitUntil { provider.callCount == 1 && !state.isLoading }
+
+        state.loadShortcuts(forceRefresh: true)
+        await waitUntil { provider.callCount == 2 && state.shortcutLoadIssue == .unavailable }
+
+        XCTAssertEqual(state.groups, cachedGroups)
+        XCTAssertEqual(state.shortcutCount, 3)
     }
 
     func testCancelledLateScanCannotOverwriteNewApplication() async {
@@ -134,6 +175,7 @@ final class AppStateLoadingTests: XCTestCase {
 private final class SequenceShortcutProvider: ShortcutProviding, @unchecked Sendable {
     enum Response {
         case success([ShortcutGroup])
+        case timedOut([ShortcutGroup])
         case failure
     }
 
@@ -151,15 +193,16 @@ private final class SequenceShortcutProvider: ShortcutProviding, @unchecked Send
         return storedCallCount
     }
 
-    func shortcuts(for processID: pid_t) -> [ShortcutGroup]? {
+    func shortcuts(for processID: pid_t) -> ShortcutScanResult {
         lock.lock()
         storedCallCount += 1
         let response = responses.isEmpty ? .failure : responses.removeFirst()
         lock.unlock()
 
         switch response {
-        case let .success(groups): return groups
-        case .failure: return nil
+        case let .success(groups): return .success(groups)
+        case let .timedOut(groups): return .timedOut(groups)
+        case .failure: return .unavailable
         }
     }
 }
@@ -184,14 +227,14 @@ private final class BlockingShortcutProvider: ShortcutProviding, @unchecked Send
         return storedBlockedScanStarted
     }
 
-    func shortcuts(for processID: pid_t) -> [ShortcutGroup]? {
-        guard processID == blockedPID else { return otherResult }
+    func shortcuts(for processID: pid_t) -> ShortcutScanResult {
+        guard processID == blockedPID else { return .success(otherResult) }
 
         lock.lock()
         storedBlockedScanStarted = true
         lock.unlock()
         _ = semaphore.wait(timeout: .now() + 2)
-        return blockedResult
+        return .success(blockedResult)
     }
 
     func releaseBlockedScan() {
@@ -209,17 +252,17 @@ private final class PIDShortcutProvider: ShortcutProviding, @unchecked Sendable 
         return storedCallCount
     }
 
-    func shortcuts(for processID: pid_t) -> [ShortcutGroup]? {
+    func shortcuts(for processID: pid_t) -> ShortcutScanResult {
         lock.lock()
         storedCallCount += 1
         lock.unlock()
 
         let title = "PID \(processID)"
-        return [
+        return .success([
             ShortcutGroup(
                 title: title,
                 shortcuts: [ShortcutItem(title: "Action", keys: ["⌘", "A"], path: title)]
             )
-        ]
+        ])
     }
 }

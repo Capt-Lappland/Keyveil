@@ -2,7 +2,13 @@ import ApplicationServices
 import Foundation
 
 protocol ShortcutProviding: Sendable {
-    func shortcuts(for processID: pid_t) -> [ShortcutGroup]?
+    func shortcuts(for processID: pid_t) -> ShortcutScanResult
+}
+
+enum ShortcutScanResult: Equatable, Sendable {
+    case success([ShortcutGroup])
+    case timedOut([ShortcutGroup])
+    case unavailable
 }
 
 enum ShortcutKeyFormatter {
@@ -98,52 +104,71 @@ enum ShortcutKeyFormatter {
 }
 
 struct AccessibilityShortcutService: ShortcutProviding {
-    func shortcuts(for processID: pid_t) -> [ShortcutGroup]? {
-        guard !Task.isCancelled else { return nil }
+    private let scanTimeout: TimeInterval
+
+    init(scanTimeout: TimeInterval = 4) {
+        self.scanTimeout = scanTimeout
+    }
+
+    func shortcuts(for processID: pid_t) -> ShortcutScanResult {
+        guard !Task.isCancelled else { return .unavailable }
+
+        let deadline = ProcessInfo.processInfo.systemUptime + scanTimeout
 
         let application = AXUIElementCreateApplication(processID)
         AXUIElementSetMessagingTimeout(application, 1.5)
         guard let menuBar = elementAttribute(application, kAXMenuBarAttribute) else {
-            return nil
+            return .unavailable
         }
 
-        guard let topLevelItems = children(of: menuBar) else { return nil }
+        guard let topLevelItems = children(of: menuBar) else { return .unavailable }
         var groups: [ShortcutGroup] = []
 
         for menuItem in topLevelItems {
-            guard !Task.isCancelled else { return nil }
+            guard !Task.isCancelled else { return .unavailable }
+            guard ProcessInfo.processInfo.systemUptime < deadline else {
+                return .timedOut(groups)
+            }
             let title = stringAttribute(menuItem, kAXTitleAttribute)
             guard !title.isEmpty, title != "Apple" else { continue }
 
             var shortcuts: [ShortcutItem] = []
             var seen = Set<String>()
-            collectShortcuts(
+            let didTimeOut = collectShortcuts(
                 from: menuItem,
                 path: title,
                 depth: 0,
+                deadline: deadline,
                 result: &shortcuts,
                 seen: &seen
             )
             if !shortcuts.isEmpty {
                 groups.append(ShortcutGroup(title: title, shortcuts: shortcuts))
             }
+            if didTimeOut {
+                return .timedOut(groups)
+            }
         }
 
-        return groups
+        return .success(groups)
     }
 
+    @discardableResult
     private func collectShortcuts(
         from element: AXUIElement,
         path: String,
         depth: Int,
+        deadline: TimeInterval,
         result: inout [ShortcutItem],
         seen: inout Set<String>
-    ) {
-        guard depth < 16, !Task.isCancelled else { return }
+    ) -> Bool {
+        guard depth < 16, !Task.isCancelled else { return false }
+        guard ProcessInfo.processInfo.systemUptime < deadline else { return true }
 
-        guard let children = children(of: element) else { return }
+        guard let children = children(of: element) else { return false }
         for child in children {
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled else { return false }
+            guard ProcessInfo.processInfo.systemUptime < deadline else { return true }
             let role = stringAttribute(child, kAXRoleAttribute)
             let title = stringAttribute(child, kAXTitleAttribute)
             let childPath = title.isEmpty ? path : "\(path)/\(title)"
@@ -163,14 +188,19 @@ struct AccessibilityShortcutService: ShortcutProviding {
                 }
             }
 
-            collectShortcuts(
+            if collectShortcuts(
                 from: child,
                 path: childPath,
                 depth: depth + 1,
+                deadline: deadline,
                 result: &result,
                 seen: &seen
-            )
+            ) {
+                return true
+            }
         }
+
+        return false
     }
 
     private func shortcutKeys(for element: AXUIElement) -> [String]? {

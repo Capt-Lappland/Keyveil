@@ -16,6 +16,7 @@ Keyveil is a lightweight macOS menu bar utility inspired by CheatSheet. Hold the
 - Uses native Liquid Glass on macOS 26 and a system material fallback on macOS 14–15
 - Uses a large adaptive 2–3 column shortcut wall with continuous vertical scrolling, adjustable hold delay, multi-display placement, and full-screen Space support
 - Caches each app's shortcuts for fast repeat display and safely ignores stale background reads
+- Distinguishes empty menus, unavailable apps, and timed-out scans with retryable states
 - Preserves temporarily disabled menu shortcuts and displays them with reduced emphasis
 - Supports English and Simplified Chinese throughout the app
 - Can launch quietly at login through the native macOS login-item service
@@ -29,6 +30,12 @@ Keyveil is a lightweight macOS menu bar utility inspired by CheatSheet. Hold the
 - Input Monitoring permission, used only to observe Command-key state
 
 Keyveil does not record keystrokes, window content, or typed text. The global event tap only observes modifier changes and cancels itself when another key is pressed.
+
+Runtime diagnostics use Apple's unified logging system and contain only timings, counts, and state transitions—never application names, menu titles, or pressed keys. Inspect them with:
+
+```bash
+log stream --predicate 'subsystem == "app.keyveil.mac"'
+```
 
 ## App icon
 

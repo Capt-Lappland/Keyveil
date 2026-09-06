@@ -90,6 +90,26 @@ final class LoginItemAndLocalizationTests: XCTestCase {
         XCTAssertTrue(state.hasRequiredPermissions)
     }
 
+    func testDeferringPermissionSetupLastsUntilExplicitlyResumed() {
+        let state = makeState(
+            loginItemClient: LoginItemClient(
+                status: { .disabled },
+                setEnabled: { _ in },
+                openSystemSettings: {}
+            )
+        )
+        var dismissCount = 0
+        state.dismissOverlay = { dismissCount += 1 }
+
+        state.deferPermissionSetupForSession()
+
+        XCTAssertTrue(state.isPermissionSetupDeferred)
+        XCTAssertEqual(dismissCount, 1)
+
+        state.resumePermissionSetup()
+        XCTAssertFalse(state.isPermissionSetupDeferred)
+    }
+
     func testEnglishAndSimplifiedChineseContainTheSameKeys() throws {
         let english = try localizationDictionary("en")
         let simplifiedChinese = try localizationDictionary("zh-Hans")
@@ -149,7 +169,7 @@ final class LoginItemAndLocalizationTests: XCTestCase {
 }
 
 private struct EmptyLoginItemTestShortcutProvider: ShortcutProviding {
-    func shortcuts(for processID: pid_t) -> [ShortcutGroup]? { [] }
+    func shortcuts(for processID: pid_t) -> ShortcutScanResult { .success([]) }
 }
 
 private enum LoginItemTestError: Error {

@@ -9,14 +9,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var panelController: ShortcutPanelController?
     private var commandMonitor: CommandHoldMonitor?
     private var statusItem: NSStatusItem?
+    private var permissionSetupMenuItem: NSMenuItem?
     private var workspaceObserver: NSObjectProtocol?
     private var permissionPollTimer: Timer?
     private var cancellables = Set<AnyCancellable>()
+    private var lastPermissionState: PermissionState?
     private let isPreviewMode = CommandLine.arguments.contains("--preview")
     private let isPermissionPreviewMode = CommandLine.arguments.contains("--preview-permissions")
     private let isSettingsPreviewMode = CommandLine.arguments.contains("--preview-settings")
 
+    private struct PermissionState: Equatable {
+        let accessibility: Bool
+        let inputMonitoring: Bool
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
+        Diagnostics.lifecycle.notice("Keyveil finished launching")
         NSApp.setActivationPolicy(.accessory)
 
         panelController = ShortcutPanelController(appState: appState)
@@ -43,9 +51,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             observeFrontmostApplication()
             refreshCurrentApplication()
 
-            if !appState.hasRequiredPermissions {
+            if !appState.hasRequiredPermissions, !appState.isPermissionSetupDeferred {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) { [weak self] in
-                    self?.panelController?.showPermissionPrompt()
+                    guard let self,
+                          !self.appState.hasRequiredPermissions,
+                          !self.appState.isPermissionSetupDeferred else { return }
+                    self.panelController?.showPermissionPrompt()
                 }
             }
         }
@@ -70,10 +81,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             } else {
                 startPermissionPolling()
             }
-        } else if !isPreviewMode, !isPermissionPreviewMode, !appState.isPermissionPromptVisible {
+        } else if !isPreviewMode,
+                  !isPermissionPreviewMode,
+                  !appState.isPermissionPromptVisible,
+                  !appState.isPermissionSetupDeferred {
             startPermissionPolling()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-                guard let self, !self.appState.hasRequiredPermissions else { return }
+                guard let self,
+                      !self.appState.hasRequiredPermissions,
+                      !self.appState.isPermissionSetupDeferred else { return }
                 self.panelController?.showPermissionPrompt()
             }
         }
@@ -87,6 +103,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let menu = NSMenu()
         menu.addItem(NSMenuItem(title: L10n.string("menu.show"), action: #selector(showPanel), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: L10n.string("menu.refresh"), action: #selector(refreshShortcuts), keyEquivalent: "r"))
+        let setupItem = NSMenuItem(
+            title: L10n.string("menu.complete_setup"),
+            action: #selector(showPermissionSetup),
+            keyEquivalent: ""
+        )
+        permissionSetupMenuItem = setupItem
+        menu.addItem(setupItem)
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: L10n.string("menu.open_accessibility"), action: #selector(openAccessibilitySettings), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: L10n.string("menu.open_input_monitoring"), action: #selector(openInputMonitoringSettings), keyEquivalent: ""))
@@ -96,6 +119,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.items.forEach { $0.target = self }
         item.menu = menu
         statusItem = item
+        updatePermissionAppearance()
+
+        appState.$permissionRevision
+            .sink { [weak self] _ in
+                self?.updatePermissionAppearance()
+            }
+            .store(in: &cancellables)
+    }
+
+    private func updatePermissionAppearance() {
+        let permissionState = PermissionState(
+            accessibility: appState.isAccessibilityGranted,
+            inputMonitoring: appState.isInputMonitoringGranted
+        )
+        let hasRequiredPermissions = permissionState.accessibility && permissionState.inputMonitoring
+
+        statusItem?.button?.contentTintColor = hasRequiredPermissions ? nil : .systemOrange
+        statusItem?.button?.toolTip = hasRequiredPermissions
+            ? L10n.string("menu.status.ready")
+            : L10n.string("menu.status.permission_required")
+        permissionSetupMenuItem?.isHidden = hasRequiredPermissions
+
+        if permissionState != lastPermissionState {
+            Diagnostics.permissions.notice(
+                "Permission state changed; accessibility=\(permissionState.accessibility, privacy: .public), input-monitoring=\(permissionState.inputMonitoring, privacy: .public)"
+            )
+            lastPermissionState = permissionState
+        }
     }
 
     private func observeFrontmostApplication() {
@@ -146,6 +197,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         commandMonitor = monitor
         if !monitor.start() || !appState.hasRequiredPermissions {
+            Diagnostics.permissions.warning("Global Command monitor is waiting for permission")
             startPermissionPolling()
         }
 
@@ -190,10 +242,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         refreshCurrentApplication()
 
         guard appState.hasRequiredPermissions else {
+            Diagnostics.presentation.notice("Presenting permission setup instead of shortcuts")
             panelController?.showPermissionPrompt()
             return
         }
 
+        Diagnostics.presentation.debug("Presenting shortcut panel; pinned=\(pinned, privacy: .public)")
         appState.loadShortcuts()
         panelController?.show(pinned: pinned)
     }
@@ -205,6 +259,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func refreshShortcuts() {
         refreshCurrentApplication()
         appState.loadShortcuts(forceRefresh: true)
+    }
+
+    @objc private func showPermissionSetup() {
+        appState.resumePermissionSetup()
+        panelController?.showPermissionPrompt()
     }
 
     @objc private func openAccessibilitySettings() {
@@ -310,6 +369,7 @@ final class ShortcutPanelController {
         panel.collectionBehavior = [.moveToActiveSpace]
         panel.hidesOnDeactivate = true
         centerOnActiveScreen(preferredSize: NSSize(width: 760, height: 520))
+        appState.resumePermissionSetup()
         appState.isPermissionPromptVisible = true
         appState.isPinned = false
         panel.alphaValue = 1

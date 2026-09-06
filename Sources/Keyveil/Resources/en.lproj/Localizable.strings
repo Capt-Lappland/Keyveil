@@ -3,10 +3,13 @@
 "menu.about" = "About Keyveil";
 "menu.show" = "Show Keyveil";
 "menu.refresh" = "Refresh Shortcuts";
+"menu.complete_setup" = "Complete Permission Setup…";
 "menu.open_accessibility" = "Open Accessibility Settings…";
 "menu.open_input_monitoring" = "Open Input Monitoring Settings…";
 "menu.settings" = "Settings…";
 "menu.quit" = "Quit Keyveil";
+"menu.status.ready" = "Keyveil is ready";
+"menu.status.permission_required" = "Keyveil needs permission";
 
 "panel.loading" = "Reading shortcuts…";
 "panel.current_app" = "CURRENT APP";
@@ -15,6 +18,13 @@
 "panel.close" = "Close Keyveil";
 "panel.empty.title" = "No shortcuts found";
 "panel.empty.description" = "Try refreshing after granting Accessibility access.";
+"panel.error.timeout.title" = "Shortcut scan took too long";
+"panel.error.timeout.description" = "The active app didn’t respond in time. You can try again.";
+"panel.error.unavailable.title" = "Couldn’t read shortcuts";
+"panel.error.unavailable.description" = "The active app’s menu isn’t available right now.";
+"panel.error.retry" = "Try Again";
+"panel.error.partial_results" = "Partial results";
+"panel.error.cached_results" = "Refresh failed · Showing last results";
 "panel.footer.pinned_before_key" = "Scroll if needed · Press Esc or double-tap";
 "panel.footer.held_before_key" = "Scroll if needed · Release";
 "panel.footer.close_after_key" = "to close";
