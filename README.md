@@ -30,7 +30,9 @@ Keyveil is a macOS menu bar app. Hold **⌘** and it lists every keyboard shortc
 | `Escape` | Close a pinned panel |
 | Type | Filter by shortcut name or key |
 
-<img src="docs/screenshots/panel-dark.jpg" alt="The same panel in dark mode" width="100%">
+| Dark mode | First launch |
+| --- | --- |
+| <img src="docs/screenshots/panel-dark.jpg" alt="The same panel in dark mode"> | <img src="docs/screenshots/onboarding.jpg" alt="The first-launch setup window" width="360"> |
 
 **Build**
 
@@ -57,7 +59,9 @@ Keyveil 是一个 macOS 菜单栏应用。按住 **⌘**，它会把当前正在
 | `Escape` | 关闭已钉住的面板 |
 | 打字 | 按快捷键名称或按键筛选 |
 
-<img src="docs/screenshots/panel-dark.jpg" alt="深色模式下的同一个面板" width="100%">
+| 深色模式 | 首次启动 |
+| --- | --- |
+| <img src="docs/screenshots/panel-dark.jpg" alt="深色模式下的同一个面板"> | <img src="docs/screenshots/onboarding.jpg" alt="首次启动的权限引导窗口" width="360"> |
 
 **构建**
 
