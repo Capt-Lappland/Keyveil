@@ -34,15 +34,15 @@ Keyveil is a macOS menu bar app. Hold **⌘** and it lists every keyboard shortc
 | --- | --- |
 | <img src="docs/screenshots/panel-dark.jpg" alt="The same panel in dark mode"> | <img src="docs/screenshots/onboarding.jpg" alt="The first-launch setup window" width="360"> |
 
-**Build**
+**[Download the latest release](https://github.com/Capt-Lappland/Keyveil/releases/latest)** — unzip it, move `Keyveil.app` to `/Applications`, and launch it from there. macOS 14 or later, Apple silicon and Intel. The first launch asks for Accessibility and Input Monitoring access — that is what lets Keyveil read the active app's menus and watch the Command key. Right-click → **Open** the first time: the build is signed ad-hoc, not notarized.
+
+**Or build it**
 
 ```bash
 git clone https://github.com/Capt-Lappland/Keyveil.git
 cd Keyveil
 ./scripts/package-app.sh release
 ```
-
-Unzip `dist/Keyveil.zip`, move `Keyveil.app` to `/Applications`, and launch it from there. macOS 14 or later. The first launch asks for Accessibility and Input Monitoring access — that is what lets Keyveil read the active app's menus and watch the Command key.
 
 MIT licensed — see [LICENSE](LICENSE).
 
@@ -63,14 +63,14 @@ Keyveil 是一个 macOS 菜单栏应用。按住 **⌘**，它会把当前正在
 | --- | --- |
 | <img src="docs/screenshots/panel-dark.jpg" alt="深色模式下的同一个面板"> | <img src="docs/screenshots/onboarding.jpg" alt="首次启动的权限引导窗口" width="360"> |
 
-**构建**
+**[下载最新版本](https://github.com/Capt-Lappland/Keyveil/releases/latest)** —— 解压后把 `Keyveil.app` 移到 `/Applications` 再启动。需要 macOS 14 或更高版本，同时支持 Apple 芯片与 Intel。首次启动会请求「辅助功能」和「输入监控」权限——前者用来读取当前应用的菜单，后者用来观察 Command 键。第一次打开请**右键 → 打开**：安装包是 ad-hoc 签名，未经 Apple 公证。
+
+**或者自己编译**
 
 ```bash
 git clone https://github.com/Capt-Lappland/Keyveil.git
 cd Keyveil
 ./scripts/package-app.sh release
 ```
-
-解压 `dist/Keyveil.zip`，把 `Keyveil.app` 移到 `/Applications` 再启动。需要 macOS 14 或更高版本。首次启动会请求「辅助功能」和「输入监控」权限——前者用来读取当前应用的菜单，后者用来观察 Command 键。
 
 MIT 许可，详见 [LICENSE](LICENSE)。
