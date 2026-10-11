@@ -1,5 +1,3 @@
-import Foundation
-
 @MainActor
 final class DebouncedAction {
     private let delay: Duration

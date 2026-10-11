@@ -1,12 +1,11 @@
 "app.current" = "Current App";
 
-"menu.about" = "About Keyveil";
 "menu.show" = "Show Keyveil";
 "menu.refresh" = "Refresh Shortcuts";
 "menu.complete_setup" = "Complete Permission Setup…";
 "menu.open_accessibility" = "Open Accessibility Settings…";
 "menu.open_input_monitoring" = "Open Input Monitoring Settings…";
-"menu.settings" = "Settings…";
+"menu.settings" = "Preferences…";
 "menu.quit" = "Quit Keyveil";
 "menu.status.ready" = "Keyveil is ready";
 "menu.status.permission_required" = "Keyveil needs permission";
@@ -31,21 +30,38 @@
 "panel.shortcut.unavailable_suffix" = " (Unavailable)";
 "panel.shortcut.unavailable_accessibility_suffix" = ", unavailable";
 
+"panel.status.ready" = "Shortcuts loaded";
+"panel.status.loading" = "Reading shortcuts";
+"panel.status.stale" = "Showing earlier results";
+"panel.status.failed" = "Shortcuts unavailable";
+
+"panel.search.placeholder" = "Search shortcuts";
+"panel.search.clear" = "Clear search";
+"panel.search.no_results.title" = "No matching shortcuts";
+"panel.search.no_results.description" = "Try a shorter word, or search by key such as ⇧⌘P.";
+
+"panel.group.common" = "Common";
+"panel.group.collapse" = "Collapse this menu";
+
 "permission.accessibility.title" = "Accessibility";
 "permission.accessibility.description" = "Reads shortcut titles and key equivalents from the active app’s menu.";
 "permission.input_monitoring.title" = "Input Monitoring";
 "permission.input_monitoring.description" = "Observes Command-key state without recording the keys you type.";
 
 "onboarding.title" = "Finish setting up Keyveil";
-"onboarding.description" = "Two macOS permissions are required. Choose one below; Keyveil will close before the system authorization appears.";
+"onboarding.description" = "Keyveil reads the active app's menus and watches for the Command key. macOS asks you to approve each of those separately.";
 "onboarding.not_now" = "Not Now";
 "onboarding.granted" = "Granted";
+"onboarding.window_title" = "Finish Setting Up Keyveil";
+"onboarding.open_settings" = "Open System Settings";
+
+"onboarding.status.waiting" = "Waiting for approval";
+"onboarding.footer.pending" = "Keyveil finishes setting up on its own once both are approved.";
+"onboarding.footer.done" = "All set. Press Command any time to see the active app's shortcuts.";
 "onboarding.allow" = "Allow";
 
 "settings.tab.general" = "General";
 "settings.tab.permissions" = "Permissions";
-"settings.command_gesture.title" = "Command gesture";
-"settings.command_gesture.description" = "Choose how long to hold Command before Keyveil reveals the active app’s shortcuts.";
 "settings.activation.section" = "Activation";
 "settings.activation.accessibility_label" = "Command hold duration";
 "settings.activation.accessibility_value" = "%@ seconds";
@@ -65,11 +81,25 @@
 "settings.quick_access.double_tap.description" = "Pin or unpin the shortcut panel without keeping Command held down.";
 "settings.quick_access.escape.title" = "Press Escape";
 "settings.quick_access.escape.description" = "Close the panel whenever it is pinned.";
-"settings.privacy.title" = "Privacy & Security";
-"settings.privacy.description" = "Keyveil needs two macOS permissions to read menu shortcuts and detect the Command key.";
 "settings.permissions.required" = "Required permissions";
 "settings.permissions.control_note" = "Permission changes remain under your control in System Settings.";
 "settings.permissions.allowed" = "Allowed";
 "settings.permissions.required_status" = "Required";
 "settings.permissions.manage" = "Manage…";
 "settings.permissions.open_settings" = "Open Settings…";
+"settings.window_title" = "Keyveil Preferences";
+"settings.tab.appearance" = "Appearance";
+"settings.appearance.section" = "Overlay";
+"settings.appearance.theme" = "Accent colour";
+"settings.appearance.theme.description" = "Colours the menu headings and the fold control in the shortcut overlay.";
+"settings.appearance.theme.system" = "System accent";
+"settings.appearance.theme.monochrome" = "Monochrome";
+"settings.appearance.theme.blue" = "Blue";
+"settings.appearance.theme.purple" = "Purple";
+"settings.appearance.theme.pink" = "Pink";
+"settings.folding.section" = "Long menus";
+"settings.folding.behaviour" = "When a menu is taller than the panel";
+"settings.folding.automatic" = "Fold to one screen";
+"settings.folding.alwaysExpanded" = "Show everything";
+"settings.folding.compact" = "Fold to a few rows";
+"settings.folding.description" = "A folded menu keeps its Show all control in the header, so nothing is hidden away.";

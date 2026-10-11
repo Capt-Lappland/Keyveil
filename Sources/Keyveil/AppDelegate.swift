@@ -8,9 +8,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var panelController: ShortcutPanelController?
     private var commandMonitor: CommandHoldMonitor?
+    private var settingsPresenter: SettingsPresenter!
+    private var permissionSetup: PermissionSetupWindowController!
     private var statusItem: NSStatusItem?
     private var permissionSetupMenuItem: NSMenuItem?
     private var workspaceObservers: [NSObjectProtocol] = []
+    private var observers: [NSObjectProtocol] = []
     private var permissionPollTimer: Timer?
     private var cancellables = Set<AnyCancellable>()
     private var lastPermissionState: PermissionState?
@@ -30,7 +33,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Diagnostics.lifecycle.notice("Keyveil finished launching")
         NSApp.setActivationPolicy(.accessory)
 
+        closePlaceholderScenes()
+
         panelController = ShortcutPanelController(appState: appState)
+        settingsPresenter = SettingsPresenter(appState: appState)
+        permissionSetup = PermissionSetupWindowController(appState: appState)
         configureStatusItem()
         if !isPreviewMode, !isPermissionPreviewMode, !isSettingsPreviewMode {
             startCommandMonitor()
@@ -43,7 +50,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         } else if isPermissionPreviewMode {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
-                self?.panelController?.showPermissionPrompt()
+                self?.showPermissionSetup()
             }
         } else if isPreviewMode {
             appState.loadPreviewData()
@@ -59,10 +66,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     guard let self,
                           !self.appState.hasRequiredPermissions,
                           !self.appState.isPermissionSetupDeferred else { return }
-                    self.panelController?.showPermissionPrompt()
+                    self.showPermissionSetup()
                 }
             }
         }
+    }
+
+    /// A menu bar app lives in the status item, so losing every window is normal and
+    /// must not end the process. Without this the app quit as soon as the placeholder
+    /// scene was dismissed, and would also have quit whenever the user closed the
+    /// preferences window.
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        false
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -75,6 +90,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSWorkspace.shared.notificationCenter.removeObserver(observer)
         }
         workspaceObservers = []
+        for observer in observers {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        observers = []
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
@@ -98,9 +117,56 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 guard let self,
                       !self.appState.hasRequiredPermissions,
                       !self.appState.isPermissionSetupDeferred else { return }
-                self.panelController?.showPermissionPrompt()
+                self.showPermissionSetup()
             }
         }
+    }
+
+    /// Dismisses the empty scene SwiftUI requires the app to declare.
+    ///
+    /// SwiftUI will not build an `App` with no scenes, but Keyveil's interface is the
+    /// status item, so that placeholder must never be seen — and SwiftUI re-shows it
+    /// well after launch, so a launch-time sweep is not enough and a timed one only
+    /// moves the problem. It is dismissed whenever it appears instead, and also when
+    /// the app is activated or reopened, which is when AppKit would surface it.
+    private func closePlaceholderScenes() {
+        for name in [
+            NSApplication.didBecomeActiveNotification,
+            NSApplication.didUpdateNotification,
+            NSWindow.didBecomeKeyNotification,
+            NSWindow.didBecomeMainNotification
+        ] {
+            observers.append(
+                NotificationCenter.default.addObserver(
+                    forName: name,
+                    object: nil,
+                    queue: .main
+                ) { [weak self] _ in
+                    MainActor.assumeIsolated {
+                        self?.closeWindowsThatAreNotOurs()
+                    }
+                }
+            )
+        }
+    }
+
+    /// Anything that is not a window this app owns is not ours to show.
+    private func closeWindowsThatAreNotOurs() {
+        var owned: Set<ObjectIdentifier> = []
+        if let panel = panelController?.window { owned.insert(ObjectIdentifier(panel)) }
+        if let preferences = settingsPresenter?.window { owned.insert(ObjectIdentifier(preferences)) }
+        if let setup = permissionSetup?.window { owned.insert(ObjectIdentifier(setup)) }
+
+        for window in NSApp.windows where !owned.contains(ObjectIdentifier(window)) {
+            window.orderOut(nil)
+            window.close()
+        }
+    }
+
+    /// AppKit surfaces a window when the app is reopened; the status item is enough.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
+        closeWindowsThatAreNotOurs()
+        return false
     }
 
     private func configureStatusItem() {
@@ -261,9 +327,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         self.presentForCurrentApplication(pinned: false)
                     }
                 case .released:
-                    if !self.appState.isPermissionPromptVisible {
-                        self.panelController?.hide()
-                    }
+                    self.panelController?.hide()
                 case .togglePin:
                     if self.panelController?.isPinned == true {
                         self.panelController?.hide(force: true)
@@ -346,7 +410,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         guard appState.hasRequiredPermissions else {
             Diagnostics.presentation.notice("Presenting permission setup instead of shortcuts")
-            panelController?.showPermissionPrompt()
+            showPermissionSetup()
             return
         }
 
@@ -366,7 +430,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func showPermissionSetup() {
         appState.resumePermissionSetup()
-        panelController?.showPermissionPrompt()
+        permissionSetup.show()
     }
 
     @objc private func openAccessibilitySettings() {
@@ -378,12 +442,81 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func openSettings() {
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-        NSApp.activate(ignoringOtherApps: true)
+        settingsPresenter.present()
     }
 
     @objc private func quit() {
         NSApp.terminate(nil)
+    }
+}
+
+@MainActor
+final class SettingsPresenter {
+    private let appState: AppState
+
+    /// The preferences window, once it has been built.
+    private(set) var window: NSWindow?
+
+    init(appState: AppState) {
+        self.appState = appState
+    }
+
+    /// Brings the window up, and verifies it actually came up.
+    ///
+    /// The old version deferred to the `showSettingsWindow:` selector and trusted
+    /// its return value. That value says only that *some* responder accepted the
+    /// action, not that a window appeared — and with a SwiftUI `Settings` scene the
+    /// window was created but never ordered on screen, so the menu item silently did
+    /// nothing while reporting success. The window is owned here now, and
+    /// presentation is confirmed rather than assumed.
+    func present() {
+        let window = makeWindow()
+        if !window.isVisible {
+            window.center()
+        }
+
+        // Activate first, then order the window front. Ordering first let the window
+        // open behind whatever app was active, which looks exactly like the menu item
+        // doing nothing.
+        activateApp()
+        window.makeKeyAndOrderFront(nil)
+        window.orderFrontRegardless()
+
+        if !window.isVisible {
+            Diagnostics.lifecycle.warning("The preferences window did not come to the front")
+        }
+    }
+
+    @discardableResult
+    func makeWindow() -> NSWindow {
+        if let window { return window }
+
+        let settingsWindow = NSWindow(
+            contentRect: NSRect(origin: .zero, size: SettingsView.preferredSize),
+            styleMask: [.titled, .closable, .miniaturizable],
+            backing: .buffered,
+            defer: false
+        )
+        settingsWindow.title = L10n.string("settings.window_title")
+        settingsWindow.isReleasedWhenClosed = false
+        // Same reasoning as the setup window: a plain hosting view in a fixed frame,
+        // so AppKit owns the window size and SwiftUI has nothing to negotiate.
+        let host = NSHostingView(rootView: SettingsView().environmentObject(appState))
+        host.frame = NSRect(origin: .zero, size: SettingsView.preferredSize)
+        host.autoresizingMask = [.width, .height]
+        settingsWindow.contentView = host
+        settingsWindow.setContentSize(SettingsView.preferredSize)
+        settingsWindow.center()
+        window = settingsWindow
+        return settingsWindow
+    }
+
+    private func activateApp() {
+        if #available(macOS 14.0, *) {
+            NSApp.activate()
+        } else {
+            NSApp.activate(ignoringOtherApps: true)
+        }
     }
 }
 
@@ -396,6 +529,9 @@ final class ShortcutPanelController {
     private var previouslyActiveApplication: NSRunningApplication?
 
     var isPinned: Bool { appState.isPinned }
+
+    /// The overlay panel, so callers can tell it apart from other windows.
+    var window: NSWindow { panel }
 
     init(appState: AppState) {
         self.appState = appState
@@ -425,9 +561,7 @@ final class ShortcutPanelController {
             self?.hide(force: true)
         }
         panel.onScrollCommand = { [weak appState] command in
-            guard let appState,
-                  appState.isPinned,
-                  !appState.isPermissionPromptVisible else { return false }
+            guard let appState, appState.isPinned else { return false }
             appState.requestShortcutScroll(command)
             return true
         }
@@ -440,7 +574,6 @@ final class ShortcutPanelController {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         panel.hidesOnDeactivate = false
         centerOnActiveScreen(preferredSize: NSSize(width: 1180, height: 720))
-        appState.isPermissionPromptVisible = false
         appState.isPinned = pinned
         appState.beginShortcutPresentation()
         panel.alphaValue = 0
@@ -450,8 +583,12 @@ final class ShortcutPanelController {
             if frontmostApplication?.processIdentifier != ProcessInfo.processInfo.processIdentifier {
                 previouslyActiveApplication = frontmostApplication
             }
+            // `makeKeyAndOrderFront` is enough for keyboard browsing: the panel is
+            // a nonactivating panel, so it takes key focus without Keyveil becoming
+            // the active application. Activating here would drag the user out of
+            // the app they were working in, which is the opposite of what a peek
+            // at shortcuts should cost them.
             panel.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
         } else {
             panel.orderFrontRegardless()
         }
@@ -471,20 +608,6 @@ final class ShortcutPanelController {
             guard let self, self.transitionGeneration == generation, self.panel.isVisible else { return }
             self.panel.alphaValue = 1
         }
-    }
-
-    func showPermissionPrompt() {
-        transitionGeneration &+= 1
-        panel.level = .normal
-        panel.collectionBehavior = [.moveToActiveSpace]
-        panel.hidesOnDeactivate = true
-        centerOnActiveScreen(preferredSize: NSSize(width: 760, height: 520))
-        appState.resumePermissionSetup()
-        appState.isPermissionPromptVisible = true
-        appState.isPinned = false
-        panel.alphaValue = 1
-        panel.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
     }
 
     func hide(force: Bool = false) {
@@ -556,11 +679,22 @@ final class OverlayPanel: NSPanel {
             onEscape?()
             return
         }
-        if let command = Self.shortcutScrollCommand(for: event),
+        if !Self.isEditingText(in: self),
+           let command = Self.shortcutScrollCommand(for: event),
            onScrollCommand?(command) == true {
             return
         }
         super.sendEvent(event)
+    }
+
+    /// While the search field owns the field editor, arrow keys have to move the
+    /// insertion point and Page Up/Down has to move through the query. Taking
+    /// those keys for the wall would make the field impossible to edit.
+    ///
+    /// AppKit's field editor is itself an `NSTextView`, and the overlay contains
+    /// no other text input, so the responder check is exact here.
+    static func isEditingText(in window: NSWindow) -> Bool {
+        window.firstResponder is NSTextView
     }
 
     static func shortcutScrollCommand(for event: NSEvent) -> ShortcutScrollCommand? {

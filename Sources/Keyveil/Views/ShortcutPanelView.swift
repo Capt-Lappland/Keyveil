@@ -2,9 +2,30 @@ import AppKit
 import Combine
 import SwiftUI
 
+/// What the header status light reports. It is derived entirely from what the
+/// user is looking at, so the light can never claim availability while the wall
+/// is empty, still loading, or reduced to earlier results.
+enum ShortcutPanelStatus: Equatable {
+    case ready
+    case loading
+    case stale
+    case failed
+
+    static func resolve(
+        isLoading: Bool,
+        hasShortcuts: Bool,
+        issue: ShortcutLoadIssue?
+    ) -> ShortcutPanelStatus {
+        if isLoading { return .loading }
+        guard hasShortcuts else { return .failed }
+        return issue == nil ? .ready : .stale
+    }
+}
+
 struct ShortcutPanelView: View {
     @EnvironmentObject private var appState: AppState
     @StateObject private var scrollController = ShortcutScrollController()
+    @State private var searchQuery = ""
 
     var body: some View {
         ZStack {
@@ -14,16 +35,12 @@ struct ShortcutPanelView: View {
             LiquidGlassSurface(cornerRadius: 30)
                 .allowsHitTesting(false)
 
-            Group {
-                if appState.isPermissionPromptVisible {
-                    PermissionPromptView()
-                } else {
-                    shortcutContent
-                }
-            }
+            shortcutContent
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(14)
+        // Shared with the surface: the window shadow is disabled, so this inset is
+        // the entire margin the drawn shadow has to fade out inside.
+        .padding(PanelSurfaceStyle.surfaceInset)
         .onExitCommand {
             appState.closeOverlay()
         }
@@ -43,6 +60,8 @@ struct ShortcutPanelView: View {
                     .foregroundStyle(.secondary)
                     .padding(.top, 10)
                 Spacer()
+            } else if isSearchEmpty {
+                searchEmptyState
             } else if appState.groups.isEmpty {
                 emptyState
             } else {
@@ -82,49 +101,104 @@ struct ShortcutPanelView: View {
 
             Spacer(minLength: 40)
 
-            HStack(spacing: 8) {
-                Circle()
-                    .fill(Color.mint)
-                    .frame(width: 8, height: 8)
-                    .shadow(color: .mint.opacity(0.7), radius: 5)
-                KeycapView(label: "⌘", compact: true)
-                Text(
-                    appState.isPinned
-                        ? L10n.string("panel.pinned")
-                        : L10n.string("panel.hold")
-                )
-                    .foregroundStyle(.secondary)
+            HStack(spacing: 10) {
+                searchField
+                HStack(spacing: 8) {
+                    ShortcutStatusIndicator(status: shortcutStatus)
+                    KeycapView(label: "⌘", compact: true)
+                    Text(
+                        appState.isPinned
+                            ? L10n.string("panel.pinned")
+                            : L10n.string("panel.hold")
+                    )
+                        .foregroundStyle(.secondary)
 
-                if appState.isPinned {
-                    Button {
-                        appState.closeOverlay()
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 16))
-                            .foregroundStyle(.tertiary)
+                    if appState.isPinned {
+                        Button {
+                            appState.closeOverlay()
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 16))
+                                .foregroundStyle(.tertiary)
+                        }
+                        .buttonStyle(.plain)
+                        .help(L10n.string("panel.close"))
                     }
-                    .buttonStyle(.plain)
-                    .help(L10n.string("panel.close"))
                 }
+                .font(.system(size: 13, weight: .medium))
             }
-            .font(.system(size: 13, weight: .medium))
+        }
+    }
+
+    private var searchField: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
+
+            TextField(L10n.string("panel.search.placeholder"), text: $searchQuery)
+                .textFieldStyle(.plain)
+                .font(.system(size: 13))
+                .frame(width: 150)
+
+            if !searchQuery.isEmpty {
+                Button {
+                    searchQuery = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.plain)
+                .help(L10n.string("panel.search.clear"))
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .fill(.primary.opacity(0.07))
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .stroke(.primary.opacity(0.12), lineWidth: 0.7)
         }
     }
 
     private var groups: some View {
         GeometryReader { proxy in
+            // The row budget comes from the height actually available, and drives
+            // both which groups fold and how many rows each shows.
+            let rowBudget = ShortcutColumnLayout.visibleRowBudget(
+                forColumnHeight: proxy.size.height
+            )
+            let sections = displayedSections(rowBudget: rowBudget)
             let columnCount = ShortcutColumnLayout.columnCount(
                 forWidth: proxy.size.width,
-                groupCount: appState.groups.count
+                groupCount: sections.count
             )
-            let columns = ShortcutColumnLayout.balanced(appState.groups, columnCount: columnCount)
+            let columns = ShortcutColumnLayout.balanced(
+                sections.map(\.group),
+                columnCount: columnCount
+            )
+            let sectionsByID = Dictionary(
+                uniqueKeysWithValues: sections.map { ($0.id, $0) }
+            )
 
             ScrollView(.vertical, showsIndicators: true) {
                 HStack(alignment: .top, spacing: 0) {
                     ForEach(columns.indices, id: \.self) { index in
                         LazyVStack(alignment: .leading, spacing: 24) {
                             ForEach(columns[index]) { group in
-                                ShortcutGroupView(group: group)
+                                if let section = sectionsByID[group.id] {
+                                    ShortcutGroupView(
+                                        section: section,
+                                        accent: accent,
+                                        onToggleExpansion: {
+                                            appState.toggleGroupExpansion(section.id)
+                                        }
+                                    )
+                                }
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .top)
@@ -143,6 +217,11 @@ struct ShortcutPanelView: View {
                 }
             }
             .id(appState.overlayPresentationRevision)
+            // A new query means a new wall, so start reading it from the top
+            // rather than leaving the scroll position where the old one ended.
+            .onChange(of: searchQuery) { _, _ in
+                scrollController.perform(.home)
+            }
             .onChange(of: appState.shortcutScrollRequest) { _, request in
                 guard let request else { return }
                 scrollController.perform(request.command)
@@ -178,6 +257,23 @@ struct ShortcutPanelView: View {
         .frame(maxWidth: .infinity)
     }
 
+    private var searchEmptyState: some View {
+        VStack(spacing: 12) {
+            Spacer()
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 31, weight: .light))
+                .foregroundStyle(.secondary)
+            Text(L10n.string("panel.search.no_results.title"))
+                .font(.system(size: 16, weight: .medium))
+            Text(L10n.string("panel.search.no_results.description"))
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+    }
+
     private var emptyStateSymbol: String {
         switch appState.shortcutLoadIssue {
         case .timedOut: "clock.badge.exclamationmark"
@@ -206,11 +302,15 @@ struct ShortcutPanelView: View {
         HStack {
             HStack(spacing: 12) {
                 Label(
-                    L10n.format("panel.shortcut_count", Int64(appState.shortcutCount)),
+                    L10n.format("panel.shortcut_count", Int64(displayedShortcutCount)),
                     systemImage: "sparkles"
                 )
 
-                if appState.shortcutLoadIssue != nil, !appState.groups.isEmpty {
+                // Only explain a failure on top of content that is actually on
+                // screen. With nothing to show, the empty state already names
+                // the failure, and a "showing last results" badge would point
+                // at results that do not exist.
+                if appState.shortcutLoadIssue != nil, displayedShortcutCount > 0 {
                     Label(
                         footerIssueLabel,
                         systemImage: "exclamationmark.triangle.fill"
@@ -234,6 +334,71 @@ struct ShortcutPanelView: View {
         .font(.system(size: 12, weight: .medium))
         .foregroundStyle(.secondary)
         .padding(.top, 12)
+    }
+
+    private func makePlan(rowBudget: Int) -> WallPlan {
+        ShortcutWallPlan.makePlan(
+            groups: appState.groups,
+            expandedIDs: appState.expandedGroupIDs,
+            commonGroupTitle: L10n.string("panel.group.common"),
+            revealLimit: appState.foldBehaviour.revealLimit(rowBudget: rowBudget)
+        )
+    }
+
+    /// The user's theme choice, or the system accent when they left it alone.
+    private var accent: Color {
+        switch appState.panelTheme.accentName {
+        case nil: .accentColor
+        case "monochrome": Color(white: 0.55)
+        case "blue": .blue
+        case "purple": .purple
+        case "pink": .pink
+        default: .accentColor
+        }
+    }
+
+    /// What the wall actually shows.
+    ///
+    /// With no query this is the plan as folded. While searching, folding is
+    /// suspended and every section is narrowed to its matches instead — otherwise a
+    /// shortcut sitting inside a folded group or inside the folded Common group
+    /// would be unfindable, which is exactly the case search exists to serve.
+    private func displayedSections(rowBudget: Int) -> [WallSection] {
+        let base = makePlan(rowBudget: rowBudget)
+        guard !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return base.sections
+        }
+
+        return base.sections.compactMap { section -> WallSection? in
+            let matches = ShortcutQuery.filter([section.group], matching: searchQuery)
+            guard let narrowed = matches.first else { return nil }
+            return WallSection(
+                id: section.id,
+                group: narrowed,
+                isCollapsed: false,
+                canCollapse: section.canCollapse,
+                revealLimit: section.revealLimit,
+                originHints: section.originHints
+            )
+        }
+    }
+
+    private var displayedShortcutCount: Int {
+        displayedSections(rowBudget: ShortcutWallPlan.revealLimit)
+            .reduce(0) { $0 + $1.group.shortcuts.count }
+    }
+
+    private var isSearchEmpty: Bool {
+        !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && displayedShortcutCount == 0
+    }
+
+    private var shortcutStatus: ShortcutPanelStatus {
+        ShortcutPanelStatus.resolve(
+            isLoading: appState.isLoading,
+            hasShortcuts: appState.shortcutCount > 0,
+            issue: appState.shortcutLoadIssue
+        )
     }
 
     private var footerIssueLabel: String {
@@ -332,59 +497,172 @@ private final class ScrollViewProbe: NSView {
     }
 }
 
+/// Applies `help` only when there is something to say, so rows without a
+/// tooltip do not pay for an empty one.
+private struct OptionalHelp: ViewModifier {
+    let text: String?
+
+    func body(content: Content) -> some View {
+        if let text {
+            content.help(text)
+        } else {
+            content
+        }
+    }
+}
+
+private struct ShortcutStatusIndicator: View {
+    let status: ShortcutPanelStatus
+
+    private var tint: Color {
+        switch status {
+        case .ready: .mint
+        case .loading: .secondary
+        case .stale: .orange
+        case .failed: .red
+        }
+    }
+
+    private var label: String {
+        switch status {
+        case .ready: L10n.string("panel.status.ready")
+        case .loading: L10n.string("panel.status.loading")
+        case .stale: L10n.string("panel.status.stale")
+        case .failed: L10n.string("panel.status.failed")
+        }
+    }
+
+    var body: some View {
+        Circle()
+            .fill(tint)
+            .frame(width: 8, height: 8)
+            .shadow(color: status == .loading ? .clear : tint.opacity(0.7), radius: 5)
+            .help(label)
+            .accessibilityElement()
+            .accessibilityLabel(label)
+    }
+}
+
 private struct ShortcutGroupView: View {
-    let group: ShortcutGroup
+    let section: WallSection
+    /// Resolved accent for headers and the fold control.
+    let accent: Color
+    let onToggleExpansion: () -> Void
+
+    private var group: ShortcutGroup { section.group }
+
+    private var visibleShortcuts: [ShortcutItem] { section.visibleShortcuts }
+
+    private var hiddenCount: Int { section.hiddenCount }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Label(group.title, systemImage: group.symbol)
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(.cyan.opacity(0.86))
-                .padding(.bottom, 10)
-                .accessibilityAddTraits(.isHeader)
+            header
 
-            LazyVStack(spacing: 0) {
-                ForEach(group.shortcuts) { shortcut in
-                    HStack(spacing: 12) {
-                        Text(shortcut.title)
-                            .font(.system(size: 15))
-                            .lineLimit(2)
-                            .minimumScaleFactor(0.9)
-                            .truncationMode(.middle)
-                            .foregroundStyle(shortcut.isEnabled ? Color.primary : Color.secondary)
-                        Spacer(minLength: 8)
-                        HStack(spacing: 4) {
-                            ForEach(Array(shortcut.keys.enumerated()), id: \.offset) { _, key in
-                                KeycapView(label: key)
-                            }
-                        }
-                        .fixedSize(horizontal: true, vertical: false)
-                        .layoutPriority(1)
-                        .opacity(shortcut.isEnabled ? 1 : 0.68)
-                    }
-                    .frame(minHeight: 43)
-                    .help(
-                        shortcut.title
-                            + (shortcut.isEnabled
-                                ? ""
-                                : L10n.string("panel.shortcut.unavailable_suffix"))
-                    )
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(shortcut.title)
-                    .accessibilityValue(
-                        shortcut.keys.joined(separator: " ")
-                            + (shortcut.isEnabled
-                                ? ""
-                                : L10n.string("panel.shortcut.unavailable_accessibility_suffix"))
-                    )
+            VStack(spacing: 0) {
+                ForEach(visibleShortcuts) { shortcut in
+                    shortcutRow(shortcut)
 
-                    if shortcut.id != group.shortcuts.last?.id {
+                    if shortcut.id != visibleShortcuts.last?.id {
                         Divider().opacity(0.24)
                     }
                 }
             }
         }
     }
+
+    private var header: some View {
+        HStack(spacing: 6) {
+            Label(group.title, systemImage: group.symbol)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(accent)
+                .accessibilityAddTraits(.isHeader)
+
+            if section.canCollapse {
+                // The disclosure lives in the header on purpose. Placed at the end of
+                // the list it falls below the visible area — a group long enough to
+                // fold is by definition taller than one screen — which makes the fold
+                // invisible and therefore useless.
+                Button(action: onToggleExpansion) {
+                    HStack(spacing: 3) {
+                        Text(
+                            section.isCollapsed
+                                ? L10n.format("panel.group.folded_count", Int64(group.shortcuts.count))
+                                : L10n.string("panel.group.collapse")
+                        )
+                        Image(systemName: section.isCollapsed ? "chevron.down" : "chevron.up")
+                            .font(.system(size: 9, weight: .bold))
+                    }
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(accent)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(accent.opacity(0.14)))
+                    .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .help(disclosureHelp)
+                .accessibilityLabel(disclosureHelp)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.bottom, 10)
+    }
+
+    private var disclosureHelp: String {
+        section.isCollapsed
+            ? L10n.format("panel.group.show_more", Int64(hiddenCount))
+            : L10n.string("panel.group.collapse")
+    }
+
+    private func shortcutRow(_ shortcut: ShortcutItem) -> some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 0) {
+                Text(shortcut.title)
+                    .font(.system(size: 15))
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.9)
+                    .truncationMode(.middle)
+                    .foregroundStyle(shortcut.isEnabled ? Color.primary : Color.secondary)
+
+                // Inside the aggregated Common group it matters which menu the
+                // shortcut came from, so the inherited block stays traceable.
+                if let origin = section.originHints[
+                    WallSection.originKey(groupTitle: group.title, itemTitle: shortcut.title)
+                ] {
+                    Text(origin)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            Spacer(minLength: 8)
+            HStack(spacing: 4) {
+                ForEach(Array(shortcut.keys.enumerated()), id: \.offset) { _, key in
+                    KeycapView(label: key)
+                }
+            }
+            .fixedSize(horizontal: true, vertical: false)
+            .layoutPriority(1)
+            .opacity(shortcut.isEnabled ? 1 : 0.68)
+        }
+        .frame(minHeight: 43)
+        // A tooltip per row means a tracking area per row, which gets expensive on
+        // the 900-shortcut stress case. The title is already on screen, so only the
+        // disabled state needs one.
+        .modifier(OptionalHelp(text: shortcut.isEnabled
+            ? nil
+            : shortcut.title + L10n.string("panel.shortcut.unavailable_suffix")))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(shortcut.title)
+        .accessibilityValue(
+            shortcut.keys.joined(separator: " ")
+                + (shortcut.isEnabled
+                    ? ""
+                    : L10n.string("panel.shortcut.unavailable_accessibility_suffix"))
+        )
+    }
+
 }
 
 struct KeycapView: View {
@@ -410,163 +688,5 @@ struct KeycapView: View {
                 RoundedRectangle(cornerRadius: compact ? 6 : 7, style: .continuous)
                     .stroke(.primary.opacity(0.15), lineWidth: 0.7)
             }
-    }
-}
-
-private struct PermissionPromptView: View {
-    @EnvironmentObject private var appState: AppState
-
-    var body: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "command.square.fill")
-                .font(.system(size: 42, weight: .light))
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(.cyan)
-
-            Text(L10n.string("onboarding.title"))
-                .font(.system(size: 21, weight: .semibold, design: .rounded))
-
-            Text(L10n.string("onboarding.description"))
-                .multilineTextAlignment(.center)
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
-                .lineSpacing(3)
-                .frame(maxWidth: 460)
-
-            VStack(spacing: 8) {
-                PermissionStatusRow(
-                    kind: .accessibility,
-                    isGranted: appState.isAccessibilityGranted
-                ) {
-                    appState.requestAccessibilityFromOnboarding()
-                }
-
-                PermissionStatusRow(
-                    kind: .inputMonitoring,
-                    isGranted: appState.isInputMonitoringGranted
-                ) {
-                    appState.requestInputMonitoringFromOnboarding()
-                }
-            }
-            .frame(maxWidth: 500)
-
-            Button(L10n.string("onboarding.not_now")) {
-                appState.deferPermissionSetupForSession()
-            }
-            .buttonStyle(.plain)
-            .font(.system(size: 12, weight: .medium))
-            .foregroundStyle(.primary.opacity(0.65))
-        }
-        .padding(54)
-    }
-}
-
-private struct PermissionStatusRow: View {
-    let kind: PermissionKind
-    let isGranted: Bool
-    let action: () -> Void
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: kind.systemImage)
-                .font(.system(size: 16, weight: .medium))
-                .frame(width: 24)
-                .foregroundStyle(isGranted ? .green : .cyan)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(kind.title)
-                    .font(.system(size: 12, weight: .semibold))
-                Text(kind.description)
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
-            if isGranted {
-                Label(L10n.string("onboarding.granted"), systemImage: "checkmark.circle.fill")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.green)
-            } else {
-                Button(action: action) {
-                    Text(L10n.string("onboarding.allow"))
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 13)
-                        .padding(.vertical, 6)
-                        .background(.cyan.gradient, in: Capsule())
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(.horizontal, 14)
-        .frame(height: 54)
-        .background(.primary.opacity(0.055), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(.primary.opacity(0.10), lineWidth: 0.7)
-        }
-    }
-}
-
-private struct LiquidGlassSurface: View {
-    let cornerRadius: CGFloat
-    @State private var displayOptionsRevision = 0
-
-    private var reduceTransparency: Bool {
-        _ = displayOptionsRevision
-        return NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
-    }
-
-    private var increaseContrast: Bool {
-        _ = displayOptionsRevision
-        return NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
-    }
-
-    var body: some View {
-        Group {
-            if reduceTransparency {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(Color(nsColor: .windowBackgroundColor))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                            .stroke(.primary.opacity(0.42), lineWidth: increaseContrast ? 1.5 : 0.8)
-                    }
-                    .onAppear {
-                        Diagnostics.presentation.notice("Using an opaque overlay for Reduce Transparency")
-                    }
-            } else if #available(macOS 26.0, *) {
-                Color.clear
-                    .glassEffect(.regular, in: .rect(cornerRadius: cornerRadius))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                            .stroke(
-                                LinearGradient(
-                                    colors: [.white.opacity(0.32), .cyan.opacity(0.10), .purple.opacity(0.08), .white.opacity(0.16)],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                ),
-                                lineWidth: increaseContrast ? 1.5 : 0.8
-                            )
-                    }
-            } else {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(.ultraThinMaterial)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                            .stroke(
-                                .white.opacity(increaseContrast ? 0.38 : 0.17),
-                                lineWidth: increaseContrast ? 1.5 : 0.8
-                            )
-                    }
-            }
-        }
-        .onReceive(
-            NSWorkspace.shared.notificationCenter.publisher(
-                for: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification
-            )
-        ) { _ in
-            displayOptionsRevision &+= 1
-        }
     }
 }

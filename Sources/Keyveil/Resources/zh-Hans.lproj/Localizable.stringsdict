@@ -16,5 +16,33 @@
             <string>%lld 个快捷键</string>
         </dict>
     </dict>
+    <key>panel.group.show_more</key>
+    <dict>
+        <key>NSStringLocalizedFormatKey</key>
+        <string>%#@more@</string>
+        <key>more</key>
+        <dict>
+            <key>NSStringFormatSpecTypeKey</key>
+            <string>NSStringPluralRuleType</string>
+            <key>NSStringFormatValueTypeKey</key>
+            <string>lld</string>
+            <key>other</key>
+            <string>还有 %lld 项</string>
+        </dict>
+    </dict>
+    <key>panel.group.folded_count</key>
+    <dict>
+        <key>NSStringLocalizedFormatKey</key>
+        <string>%#@folded@</string>
+        <key>folded</key>
+        <dict>
+            <key>NSStringFormatSpecTypeKey</key>
+            <string>NSStringPluralRuleType</string>
+            <key>NSStringFormatValueTypeKey</key>
+            <string>lld</string>
+            <key>other</key>
+            <string>展开全部 %lld 项</string>
+        </dict>
+    </dict>
 </dict>
 </plist>

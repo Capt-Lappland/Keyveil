@@ -18,5 +18,37 @@
             <string>%lld shortcuts</string>
         </dict>
     </dict>
+    <key>panel.group.show_more</key>
+    <dict>
+        <key>NSStringLocalizedFormatKey</key>
+        <string>%#@more@</string>
+        <key>more</key>
+        <dict>
+            <key>NSStringFormatSpecTypeKey</key>
+            <string>NSStringPluralRuleType</string>
+            <key>NSStringFormatValueTypeKey</key>
+            <string>lld</string>
+            <key>one</key>
+            <string>Show %lld more</string>
+            <key>other</key>
+            <string>Show %lld more</string>
+        </dict>
+    </dict>
+    <key>panel.group.folded_count</key>
+    <dict>
+        <key>NSStringLocalizedFormatKey</key>
+        <string>%#@folded@</string>
+        <key>folded</key>
+        <dict>
+            <key>NSStringFormatSpecTypeKey</key>
+            <string>NSStringPluralRuleType</string>
+            <key>NSStringFormatValueTypeKey</key>
+            <string>lld</string>
+            <key>one</key>
+            <string>Show all %lld</string>
+            <key>other</key>
+            <string>Show all %lld</string>
+        </dict>
+    </dict>
 </dict>
 </plist>

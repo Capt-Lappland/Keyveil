@@ -1,12 +1,11 @@
 "app.current" = "当前应用";
 
-"menu.about" = "关于 Keyveil";
 "menu.show" = "显示 Keyveil";
 "menu.refresh" = "刷新快捷键";
 "menu.complete_setup" = "完成权限设置…";
 "menu.open_accessibility" = "打开辅助功能设置…";
 "menu.open_input_monitoring" = "打开输入监控设置…";
-"menu.settings" = "设置…";
+"menu.settings" = "偏好设置…";
 "menu.quit" = "退出 Keyveil";
 "menu.status.ready" = "Keyveil 已就绪";
 "menu.status.permission_required" = "Keyveil 需要权限";
@@ -31,21 +30,38 @@
 "panel.shortcut.unavailable_suffix" = "（不可用）";
 "panel.shortcut.unavailable_accessibility_suffix" = "，不可用";
 
+"panel.status.ready" = "快捷键已就绪";
+"panel.status.loading" = "正在读取快捷键";
+"panel.status.stale" = "正在显示较早的结果";
+"panel.status.failed" = "无法读取快捷键";
+
+"panel.search.placeholder" = "搜索快捷键";
+"panel.search.clear" = "清除搜索";
+"panel.search.no_results.title" = "没有匹配的快捷键";
+"panel.search.no_results.description" = "试试更短的词，或直接搜索按键，例如 ⇧⌘P。";
+
+"panel.group.common" = "通用";
+"panel.group.collapse" = "收起这个菜单";
+
 "permission.accessibility.title" = "辅助功能";
 "permission.accessibility.description" = "读取当前应用菜单中的快捷键名称和按键组合。";
 "permission.input_monitoring.title" = "输入监控";
 "permission.input_monitoring.description" = "仅检测 Command 键状态，不记录你输入的按键。";
 
 "onboarding.title" = "完成 Keyveil 设置";
-"onboarding.description" = "Keyveil 需要两项 macOS 权限。请选择下方的一项；系统授权界面出现前，Keyveil 会先收起。";
+"onboarding.description" = "Keyveil 需要读取当前应用的菜单，并监听 Command 键状态。这两项需要你分别在 macOS 中授权。";
 "onboarding.not_now" = "暂不设置";
 "onboarding.granted" = "已允许";
+"onboarding.window_title" = "完成 Keyveil 设置";
+"onboarding.open_settings" = "打开系统设置";
+
+"onboarding.status.waiting" = "等待授权";
+"onboarding.footer.pending" = "两项都授权后，Keyveil 会自动完成设置。";
+"onboarding.footer.done" = "已就绪。随时按住 Command 查看当前应用的快捷键。";
 "onboarding.allow" = "允许";
 
 "settings.tab.general" = "通用";
 "settings.tab.permissions" = "权限";
-"settings.command_gesture.title" = "Command 手势";
-"settings.command_gesture.description" = "设置长按 Command 多久后显示当前应用的快捷键。";
 "settings.activation.section" = "触发";
 "settings.activation.accessibility_label" = "Command 长按时长";
 "settings.activation.accessibility_value" = "%@ 秒";
@@ -65,11 +81,25 @@
 "settings.quick_access.double_tap.description" = "无需持续按住 Command，即可固定或取消固定快捷键面板。";
 "settings.quick_access.escape.title" = "按下 Escape";
 "settings.quick_access.escape.description" = "面板固定时，随时按 Escape 将其关闭。";
-"settings.privacy.title" = "隐私与安全性";
-"settings.privacy.description" = "Keyveil 需要两项 macOS 权限，才能读取菜单快捷键并检测 Command 键。";
 "settings.permissions.required" = "所需权限";
 "settings.permissions.control_note" = "权限始终由你在“系统设置”中管理。";
 "settings.permissions.allowed" = "已允许";
 "settings.permissions.required_status" = "需要授权";
 "settings.permissions.manage" = "管理…";
 "settings.permissions.open_settings" = "打开设置…";
+"settings.window_title" = "Keyveil 偏好设置";
+"settings.tab.appearance" = "外观";
+"settings.appearance.section" = "浮层";
+"settings.appearance.theme" = "强调色";
+"settings.appearance.theme.description" = "用于快捷键浮层里的菜单标题和折叠控件。";
+"settings.appearance.theme.system" = "跟随系统";
+"settings.appearance.theme.monochrome" = "单色";
+"settings.appearance.theme.blue" = "蓝色";
+"settings.appearance.theme.purple" = "紫色";
+"settings.appearance.theme.pink" = "粉色";
+"settings.folding.section" = "长菜单";
+"settings.folding.behaviour" = "菜单比面板还高时";
+"settings.folding.automatic" = "折叠到一屏";
+"settings.folding.alwaysExpanded" = "全部展开";
+"settings.folding.compact" = "只留几行";
+"settings.folding.description" = "折叠后「展开全部」控件仍在标题行，因此没有任何内容被藏起来。";

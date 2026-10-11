@@ -25,10 +25,29 @@ cd "$PROJECT_DIR"
 mkdir -p "$DIST_DIR"
 
 if [[ "$CONFIGURATION" == "release" ]]; then
-    DEVELOPER_DIR="$KEYVEIL_DEVELOPER_DIR" "$SWIFT_BIN" build -c release --arch arm64
-    DEVELOPER_DIR="$KEYVEIL_DEVELOPER_DIR" "$SWIFT_BIN" build -c release --arch x86_64
-    ARM64_BIN_DIR="$(DEVELOPER_DIR="$KEYVEIL_DEVELOPER_DIR" "$SWIFT_BIN" build -c release --arch arm64 --show-bin-path)"
-    X86_64_BIN_DIR="$(DEVELOPER_DIR="$KEYVEIL_DEVELOPER_DIR" "$SWIFT_BIN" build -c release --arch x86_64 --show-bin-path)"
+    # `--arch` alone no longer separates the products: current SwiftPM writes both
+    # slices to the same bin path, so the second build silently replaced the first
+    # and lipo was handed the same x86_64 binary twice. Each slice therefore gets
+    # its own scratch directory, which also keeps the build output out of a synced
+    # Documents folder where a file provider could invalidate the signature.
+    ARM64_SCRATCH="$STAGING_ROOT/build-arm64"
+    X86_64_SCRATCH="$STAGING_ROOT/build-x86_64"
+
+    DEVELOPER_DIR="$KEYVEIL_DEVELOPER_DIR" "$SWIFT_BIN" build -c release \
+        --triple arm64-apple-macosx14.0 --scratch-path "$ARM64_SCRATCH"
+    DEVELOPER_DIR="$KEYVEIL_DEVELOPER_DIR" "$SWIFT_BIN" build -c release \
+        --triple x86_64-apple-macosx14.0 --scratch-path "$X86_64_SCRATCH"
+
+    ARM64_BIN_DIR="$(DEVELOPER_DIR="$KEYVEIL_DEVELOPER_DIR" "$SWIFT_BIN" build -c release \
+        --triple arm64-apple-macosx14.0 --scratch-path "$ARM64_SCRATCH" --show-bin-path)"
+    X86_64_BIN_DIR="$(DEVELOPER_DIR="$KEYVEIL_DEVELOPER_DIR" "$SWIFT_BIN" build -c release \
+        --triple x86_64-apple-macosx14.0 --scratch-path "$X86_64_SCRATCH" --show-bin-path)"
+
+    if [[ "$ARM64_BIN_DIR" == "$X86_64_BIN_DIR" ]]; then
+        echo "error: both architectures resolved to $ARM64_BIN_DIR; refusing to lipo one slice twice" >&2
+        exit 1
+    fi
+
     RESOURCE_BUNDLE_DIR="$ARM64_BIN_DIR/Keyveil_Keyveil.bundle"
 else
     DEVELOPER_DIR="$KEYVEIL_DEVELOPER_DIR" "$SWIFT_BIN" build -c "$CONFIGURATION"
@@ -42,6 +61,13 @@ if [[ "$CONFIGURATION" == "release" ]]; then
         "$ARM64_BIN_DIR/Keyveil" \
         "$X86_64_BIN_DIR/Keyveil" \
         -output "$MACOS_DIR/Keyveil"
+
+    # Assert the artifact really is universal instead of trusting the build step.
+    ARCHITECTURES="$("$LIPO_BIN" -archs "$MACOS_DIR/Keyveil")"
+    if [[ "$ARCHITECTURES" != *arm64* || "$ARCHITECTURES" != *x86_64* ]]; then
+        echo "error: expected a universal binary, got '$ARCHITECTURES'" >&2
+        exit 1
+    fi
 else
     cp "$BUILD_BIN_DIR/Keyveil" "$MACOS_DIR/Keyveil"
 fi

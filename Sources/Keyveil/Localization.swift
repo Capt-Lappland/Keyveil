@@ -6,7 +6,11 @@ enum L10n {
         .dropFirst("--preview-language=".count)
         .description
 
-    private static var resourceBundle: Bundle {
+    /// Both bundles are resolved once. They used to be computed properties, which
+    /// re-ran the `Bundle.main` probes behind every single `L10n.string` call —
+    /// including the ones inside SwiftUI `body` evaluations, where scrolling the
+    /// shortcut wall re-reads dozens of them per frame.
+    private static let resourceBundle: Bundle = {
         if Bundle.main.path(forResource: "Localizable", ofType: "strings") != nil {
             return .main
         }
@@ -19,9 +23,9 @@ enum L10n {
         }
 
         return .module
-    }
+    }()
 
-    private static var bundle: Bundle {
+    private static let bundle: Bundle = {
         if let previewLocalization,
            let previewBundle = localizedBundle(
                for: previewLocalization,
@@ -30,7 +34,7 @@ enum L10n {
             return previewBundle
         }
         return resourceBundle
-    }
+    }()
 
     private static func localizedBundle(
         for localization: String,

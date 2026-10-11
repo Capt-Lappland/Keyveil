@@ -93,6 +93,22 @@ final class AppStateLoadingTests: XCTestCase {
         XCTAssertEqual(state.shortcutCount, 3)
     }
 
+    func testFailedFirstScanLeavesNothingForTheWallToContradict() async {
+        let provider = SequenceShortcutProvider([.failure])
+        let state = makeState(provider: provider)
+        state.updateApplication(name: "App", icon: nil, processID: 44, bundleIdentifier: "test.blank")
+
+        state.loadShortcuts()
+        await waitUntil { provider.callCount == 1 && !state.isLoading }
+
+        // A failed scan must not fabricate an empty-but-cached-looking result:
+        // no shortcuts survive, so the panel shows its retryable empty state and
+        // the "showing last results" badge stays off.
+        XCTAssertEqual(state.shortcutCount, 0)
+        XCTAssertTrue(state.groups.isEmpty)
+        XCTAssertEqual(state.shortcutLoadIssue, .unavailable)
+    }
+
     func testMenuChangeInvalidatesOnlyTheMatchingApplicationCache() async {
         let firstGroups = [group("Initial", itemCount: 2)]
         let refreshedGroups = [group("Updated", itemCount: 4)]
