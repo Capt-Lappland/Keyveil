@@ -15,7 +15,7 @@
 
 [English](#english) · [简体中文](#简体中文)
 
-<img src="docs/screenshots/panel-light.png" alt="Keyveil showing Safari's shortcuts in a three-column wall" width="100%">
+<img src="docs/screenshots/panel-light.jpg" alt="Keyveil showing Safari's shortcuts in a three-column wall over the desktop" width="100%">
 
 </div>
 
@@ -29,7 +29,7 @@ Keyveil is a small macOS menu bar app. Hold **⌘** and it reads the frontmost a
 
 | Dark appearance | First-run setup |
 | --- | --- |
-| <img src="docs/screenshots/panel-dark.png" alt="The shortcut panel in dark mode"> | <img src="docs/screenshots/onboarding.png" alt="The permission setup window" width="330"> |
+| <img src="docs/screenshots/panel-dark.jpg" alt="The shortcut panel in dark mode"> | <img src="docs/screenshots/onboarding.jpg" alt="The permission setup window" width="330"> |
 
 ### Features
 
@@ -201,7 +201,7 @@ Keyveil 是一个小巧的 macOS 菜单栏应用。按住 **⌘**，它会通过
 
 | 深色外观 | 首次启动引导 |
 | --- | --- |
-| <img src="docs/screenshots/panel-dark.png" alt="深色模式下的快捷键面板"> | <img src="docs/screenshots/onboarding.png" alt="权限引导窗口" width="330"> |
+| <img src="docs/screenshots/panel-dark.jpg" alt="深色模式下的快捷键面板"> | <img src="docs/screenshots/onboarding.jpg" alt="权限引导窗口" width="330"> |
 
 ### 功能
 
