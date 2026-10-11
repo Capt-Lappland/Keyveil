@@ -537,7 +537,7 @@ final class ShortcutPanelController {
         self.appState = appState
         hostingView = NSHostingView(rootView: AnyView(ShortcutPanelView().environmentObject(appState)))
         panel = OverlayPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 1180, height: 720),
+            contentRect: NSRect(x: 0, y: 0, width: 1180 + PanelSurfaceStyle.surfaceInset * 2, height: 720 + PanelSurfaceStyle.surfaceInset * 2),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -573,7 +573,10 @@ final class ShortcutPanelController {
         panel.level = .popUpMenu
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         panel.hidesOnDeactivate = false
-        centerOnActiveScreen(preferredSize: NSSize(width: 1180, height: 720))
+        // `preferredSize` is the surface the user sees; the window adds the inset on
+        // every side so the shadow has room to fade.
+        let inset = PanelSurfaceStyle.surfaceInset
+        centerOnActiveScreen(preferredSize: NSSize(width: 1180 + inset * 2, height: 720 + inset * 2))
         appState.isPinned = pinned
         appState.beginShortcutPresentation()
         panel.alphaValue = 0

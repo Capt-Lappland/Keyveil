@@ -70,20 +70,25 @@ enum PanelSurfaceStyle {
     /// It has to stay inside `surfaceInset`. The window is transparent and only as
     /// large as the panel plus that inset, so a larger shadow has nowhere to fade:
     /// it is cut off flat at the window bounds and reads as a translucent grey box
-    /// around the panel rather than as a shadow.
-    ///
-    /// The reach is `radius + offset` downwards but `radius` in every other
-    /// direction, so the vertical case is the one that decides whether it fits.
+    /// around the panel rather than as a shadow. Size the inset from `shadowReach`,
+    /// which models the blur's tail rather than just the radius.
     static let shadowRadius: CGFloat = 9
     static let shadowOffsetY: CGFloat = 4
 
     /// How far `ShortcutPanelView` insets its content, and therefore the room the
     /// window leaves around the surface.
-    static let surfaceInset: CGFloat = 14
+    ///
+    /// At the previous 14 pt the shadow was still 11% opaque where the window ended
+    /// and stopped dead there, which is exactly the flat edge described above.
+    static let surfaceInset: CGFloat = 24
 
     /// Furthest the shadow paints from the surface edge.
+    ///
+    /// A blur of radius r keeps painting out to about 2·r, so `radius + offset`
+    /// understates the reach by half. Measured on a solid backdrop at radius 9 and
+    /// offset 4: still 4% opaque 22 pt below the panel, gone by 24 pt.
     static var shadowReach: CGFloat {
-        max(shadowRadius, shadowRadius + shadowOffsetY)
+        shadowRadius * 2 + shadowOffsetY
     }
 
     /// True when the shadow can fade out before it reaches the window edge.

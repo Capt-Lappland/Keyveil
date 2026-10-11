@@ -538,11 +538,16 @@ final class ShortcutPanelRenderingTests: XCTestCase {
         )
         XCTAssertTrue(PanelSurfaceStyle.shadowFitsInsideWindow)
 
-        // The vertical direction is the one that overflows, because the shadow is
-        // offset downwards as well as blurred.
-        XCTAssertLessThanOrEqual(
-            PanelSurfaceStyle.shadowRadius + PanelSurfaceStyle.shadowOffsetY,
-            inset
+        // The model that matters: a blur of radius r paints out to about 2·r, so the
+        // downward reach is nearer 22 pt than the 13 pt that `radius + offset` suggests.
+        // The 14 pt inset this test used to accept was 11% opaque where the window
+        // ended, which is exactly the flat edge the assertion above describes.
+        XCTAssertGreaterThanOrEqual(
+            inset,
+            PanelSurfaceStyle.shadowRadius * 2 + PanelSurfaceStyle.shadowOffsetY,
+            "A blur of radius \(PanelSurfaceStyle.shadowRadius) pt still paints about "
+                + "\(PanelSurfaceStyle.shadowRadius * 2) pt out; the inset has to cover that "
+                + "plus the \(PanelSurfaceStyle.shadowOffsetY) pt offset"
         )
         // And there must still be a shadow worth drawing.
         XCTAssertGreaterThan(PanelSurfaceStyle.shadowRadius, 0)
